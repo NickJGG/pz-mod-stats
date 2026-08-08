@@ -1,0 +1,46 @@
+name: Poll workshop stats
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub queues cron runs on a best-effort basis, so treat
+    # this as "at least every 15 min" rather than a guarantee. Four commits an
+    # hour also keeps us under the ~10 Pages builds/hour soft limit.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # lets you force a check from the Actions tab
+
+permissions:
+  contents: write
+
+# Never let two polls race on the same push.
+concurrency:
+  group: poll-workshop-stats
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch stats
+        env:
+          # Optional. Without it, everything but the star rating still records.
+          STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
+        run: node scripts/fetch.mjs
+
+      - name: Commit if the numbers moved
+        run: |
+          if [ -z "$(git status --porcelain data/history.json)" ]; then
+            echo "No change to record."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          git commit -m "stats: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git pull --rebase --autostash
+          git push

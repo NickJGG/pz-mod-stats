@@ -1,0 +1,9 @@
+{
+  "_comment": "Steam Workshop items to track. `slot` fixes each mod's chart colour so it never moves when the list is reordered or filtered — append new mods with the next free slot rather than renumbering.",
+  "appid": 108600,
+  "mods": [
+    { "id": "3778868211", "short": "Turn Off Fridges", "slot": 1 },
+    { "id": "3777800131", "short": "Book Tracker", "slot": 2 },
+    { "id": "3779516831", "short": "Auto Trunk", "slot": 3 }
+  ]
+}

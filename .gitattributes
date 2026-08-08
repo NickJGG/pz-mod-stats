@@ -1,0 +1,4 @@
+# The poller writes data/history.json from a Linux runner; pinning LF keeps a
+# Windows checkout from turning every line ending into a spurious diff.
+* text=auto eol=lf
+*.png binary

@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workshop Stats</title>
+<meta name="description" content="Live Project Zomboid Workshop stats — subscribers, favourites, views and ratings.">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Workshop">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M6 22 L13 14 L19 18 L26 9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+<style>
+/* ---- Tokens -------------------------------------------------------------
+   Light is the base; the dark values are declared twice on purpose — once for
+   the OS setting, once for the in-page toggle — so the toggle wins both ways. */
+:root {
+  color-scheme: light;
+  --plane:      #f9f9f7;
+  --surface:    #fcfcfb;
+  --ink:        #0b0b0b;
+  --ink-2:      #52514e;
+  --muted:      #898781;
+  --grid:       #e1e0d9;
+  --border:     rgba(11,11,11,0.10);
+  --up:         #006300;
+  --down:       #d03b3b;
+  --s1:         #2a78d6;
+  --s2:         #eb6834;
+  --s3:         #1baf7a;
+  --shadow:     0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane:   #0d0d0d;
+    --surface: #1a1a19;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --border:  rgba(255,255,255,0.10);
+    --up:      #0ca30c;
+    --down:    #e66767;
+    --s1:      #3987e5;
+    --s2:      #d95926;
+    --s3:      #199e70;
+    --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane:   #0d0d0d;
+  --surface: #1a1a19;
+  --ink:     #ffffff;
+  --ink-2:   #c3c2b7;
+  --muted:   #898781;
+  --grid:    #2c2c2a;
+  --border:  rgba(255,255,255,0.10);
+  --up:      #0ca30c;
+  --down:    #e66767;
+  --s1:      #3987e5;
+  --s2:      #d95926;
+  --s3:      #199e70;
+  --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding: 24px 20px 64px;
+  background: var(--plane);
+  color: var(--ink);
+  font: 400 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+/* ---- Header ---- */
+header {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 8px 16px; margin-bottom: 28px;
+}
+h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.status {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2);
+}
+.pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--up); flex: none;
+}
+.pulse[data-state="stale"] { background: var(--muted); }
+.pulse[data-state="error"] { background: var(--down); }
+@media (prefers-reduced-motion: no-preference) {
+  .pulse[data-state="live"] { animation: breathe 2.6s ease-in-out infinite; }
+}
+@keyframes breathe { 50% { opacity: 0.35; } }
+
+button {
+  font: inherit; font-size: 13px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: 5px 11px; cursor: pointer;
+  min-height: 30px;
+}
+button:hover { color: var(--ink); }
+button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color: var(--muted); }
+:is(button, a, summary):focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* ---- Filter row: one row, above everything it scopes ---- */
+.filters {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 20px; flex-wrap: wrap;
+}
+.filters .label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.seg { display: flex; gap: 4px; }
+
+/* ---- Hero ---- */
+.hero {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow);
+  padding: 22px 24px; margin-bottom: 16px;
+  display: grid; grid-template-columns: minmax(0,auto) minmax(160px,1fr);
+  gap: 20px 32px; align-items: center;
+}
+.hero-label { font-size: 13px; color: var(--ink-2); margin-bottom: 2px; }
+.hero-value { font-size: 56px; font-weight: 650; line-height: 1.05; letter-spacing: -0.025em; }
+.hero-sub { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+.delta { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.delta[data-dir="up"]   { color: var(--up); }
+.delta[data-dir="down"] { color: var(--down); }
+.delta[data-dir="flat"] { color: var(--muted); font-weight: 400; }
+
+/* ---- KPI row ---- */
+.kpis {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 16px; margin-bottom: 28px;
+}
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px;
+}
+.kpi .k-label { font-size: 12.5px; color: var(--ink-2); }
+.kpi .k-value { font-size: 27px; font-weight: 650; letter-spacing: -0.02em; margin: 3px 0 2px; }
+
+/* ---- Mod cards ---- */
+h2.section {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px;
+}
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); padding: 18px 20px 14px;
+  display: flex; flex-direction: column;
+}
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.card-head a { color: inherit; text-decoration: none; font-weight: 600; font-size: 14.5px; }
+.card-head a:hover { text-decoration: underline; }
+.card-value { font-size: 38px; font-weight: 650; line-height: 1.05; letter-spacing: -0.025em; }
+.card-value-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
+.card-value-label { font-size: 12.5px; color: var(--ink-2); }
+
+.spark { position: relative; margin: 10px 0 12px; min-height: 62px; }
+.spark svg { display: block; }
+.spark-empty {
+  height: 62px; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; color: var(--muted);
+  border: 1px dashed var(--grid); border-radius: 8px;
+}
+.tip {
+  position: absolute; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -100%);
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: var(--shadow); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; line-height: 1.35; white-space: nowrap;
+  color: var(--ink); z-index: 5;
+}
+.tip b { font-weight: 650; }
+.tip .tip-t { color: var(--muted); font-size: 11px; display: block; }
+
+.foot {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  border-top: 1px solid var(--grid); padding-top: 11px; margin-top: auto;
+}
+.foot div { font-size: 12.5px; color: var(--ink-2); }
+.foot b { display: block; font-size: 16px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; }
+.foot .hint { color: var(--muted); font-weight: 400; font-size: 12px; }
+
+/* ---- Table view (the WCAG-clean twin) ---- */
+details.table-view { margin-top: 28px; }
+details.table-view summary {
+  cursor: pointer; font-size: 13px; color: var(--ink-2);
+  padding: 6px 0; width: fit-content;
+}
+details.table-view summary:hover { color: var(--ink); }
+.table-scroll { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+th, td { text-align: right; padding: 9px 12px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+tbody td { font-variant-numeric: tabular-nums; color: var(--ink); }
+tfoot td { font-weight: 650; font-variant-numeric: tabular-nums; border-bottom: none; }
+.name-cell { display: flex; align-items: center; gap: 8px; }
+
+footer.page {
+  margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--grid);
+  font-size: 12.5px; color: var(--muted);
+}
+footer.page a { color: var(--ink-2); }
+
+.err {
+  background: var(--surface); border: 1px solid var(--down);
+  border-radius: 10px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px;
+}
+
+@media (max-width: 620px) {
+  body { padding: 18px 14px 48px; }
+  .hero { grid-template-columns: 1fr; padding: 18px; }
+  .hero-value { font-size: 46px; }
+  .kpis { grid-template-columns: 1fr; gap: 12px; }
+  .kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 16px; }
+  .kpi .k-value { font-size: 22px; margin: 0; }
+}
+
+/* Refetch holds the previous render rather than flashing a skeleton. */
+.wrap { transition: opacity 120ms ease; }
+.wrap[data-loading="true"] { opacity: 0.6; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+
+  <header>
+    <h1>Workshop Stats</h1>
+    <div class="status">
+      <span class="pulse" id="pulse" data-state="live"></span>
+      <span id="freshness">Loading…</span>
+      <button id="theme" type="button" title="Switch theme" aria-label="Switch colour theme">Theme</button>
+    </div>
+  </header>
+
+  <div id="error-slot"></div>
+
+  <div class="filters">
+    <span class="label">Compare against</span>
+    <div class="seg" id="range" role="group" aria-label="Comparison window">
+      <button type="button" data-days="1">24h</button>
+      <button type="button" data-days="7" aria-pressed="true">7d</button>
+      <button type="button" data-days="30">30d</button>
+      <button type="button" data-days="0">All</button>
+    </div>
+  </div>
+
+  <section class="hero" aria-label="Total subscribers">
+    <div>
+      <div class="hero-label">Total subscribers</div>
+      <div class="hero-value" id="hero-value">—</div>
+      <div class="hero-sub">
+        <span class="delta" id="hero-delta" data-dir="flat">—</span>
+        <span style="font-size:13px;color:var(--muted)" id="hero-window"></span>
+      </div>
+    </div>
+    <div class="spark" id="hero-spark"></div>
+  </section>
+
+  <div class="kpis">
+    <div class="kpi"><div class="k-label">Favourites</div><div class="k-value" id="kpi-favs">—</div><span class="delta" id="kpi-favs-d" data-dir="flat">—</span></div>
+    <div class="kpi"><div class="k-label">Views</div><div class="k-value" id="kpi-views">—</div><span class="delta" id="kpi-views-d" data-dir="flat">—</span></div>
+    <div class="kpi"><div class="k-label">Rating</div><div class="k-value" id="kpi-rating">—</div><span class="delta" id="kpi-rating-d" data-dir="flat">—</span></div>
+  </div>
+
+  <h2 class="section">By mod</h2>
+  <div class="cards" id="cards"></div>
+
+  <details class="table-view">
+    <summary>Table view — every number in plain text</summary>
+    <div class="table-scroll">
+      <table id="table">
+        <thead><tr>
+          <th scope="col">Mod</th><th scope="col">Subscribers</th><th scope="col" id="th-change">Change</th>
+          <th scope="col">Favourites</th><th scope="col">Views</th>
+          <th scope="col">Rating</th><th scope="col">Votes</th>
+          <th scope="col">Lifetime subs</th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+  </details>
+
+  <footer class="page">
+    <span id="foot-note">Checked automatically every 15 minutes; this page refreshes itself every minute.</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3" };
+const POLL_MS = 60_000;
+const FIELD = { t: 0, subs: 1, favs: 2, views: 3, lifeSubs: 4, lifeFavs: 5, up: 6, down: 7 };
+
+let data = null;
+let rangeDays = Number(localStorage.getItem("rangeDays") ?? 7);
+
+/* ---------- formatting ---------- */
+
+const nf = new Intl.NumberFormat();
+
+// Proportional figures do the aligning at display sizes; compact only past 10k.
+function fmt(n) {
+  if (n == null) return "—";
+  if (Math.abs(n) >= 10_000) {
+    return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  }
+  return nf.format(n);
+}
+
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+function relTime(sec) {
+  const age = Math.floor(Date.now() / 1000) - sec;
+  if (age < 90) return "just now";
+  for (const [div, unit] of [[86400, "day"], [3600, "hour"], [60, "minute"]]) {
+    if (age >= div) return rtf.format(-Math.round(age / div), unit);
+  }
+  return "just now";
+}
+
+function absTime(sec) {
+  return new Date(sec * 1000).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
+const windowLabel = () =>
+  rangeDays === 0 ? "since tracking began" : rangeDays === 1 ? "in 24h" : `in ${rangeDays}d`;
+
+// Direction is carried by an arrow glyph as well as colour — never colour alone.
+function setDelta(el, diff, suffix = "") {
+  if (diff == null) { el.textContent = "—"; el.dataset.dir = "flat"; return; }
+  if (diff === 0)   { el.textContent = `No change ${suffix}`.trim(); el.dataset.dir = "flat"; return; }
+  el.dataset.dir = diff > 0 ? "up" : "down";
+  el.textContent = `${diff > 0 ? "↑" : "↓"} ${fmt(Math.abs(diff))} ${suffix}`.trim();
+}
+
+/* ---------- series helpers ---------- */
+
+const rowsFor = (id) => data?.series?.[id] ?? [];
+
+const latest = (id) => rowsFor(id).at(-1) ?? null;
+
+// The sample the comparison window starts from: the last one at or before the
+// cutoff, else the oldest we hold (so a young mod compares against launch).
+function baseline(id) {
+  const rows = rowsFor(id);
+  if (rows.length < 2) return null;
+  if (rangeDays === 0) return rows[0];
+  const cutoff = Date.now() / 1000 - rangeDays * 86400;
+  let pick = null;
+  for (const r of rows) { if (r[0] <= cutoff) pick = r; else break; }
+  return pick ?? rows[0];
+}
+
+function totalNow(field) {
+  let sum = 0, any = false;
+  for (const id of data.order) {
+    const r = latest(id);
+    if (r && r[field] != null) { sum += r[field]; any = true; }
+  }
+  return any ? sum : null;
+}
+
+function totalDelta(field) {
+  let diff = 0, any = false;
+  for (const id of data.order) {
+    const now = latest(id), was = baseline(id);
+    if (now && was && now[field] != null && was[field] != null) { diff += now[field] - was[field]; any = true; }
+  }
+  return any ? diff : null;
+}
+
+// Aggregate subscriber curve. Samples are per-mod and not aligned in time, so
+// step each mod forward independently across the union of timestamps.
+function totalSeries() {
+  const stamps = new Set();
+  for (const id of data.order) for (const r of rowsFor(id)) stamps.add(r[0]);
+  const sorted = [...stamps].sort((a, b) => a - b);
+
+  const cursor = Object.fromEntries(data.order.map((id) => [id, 0]));
+  const held = Object.fromEntries(data.order.map((id) => [id, null]));
+
+  return sorted.map((t) => {
+    let sum = 0;
+    for (const id of data.order) {
+      const rows = rowsFor(id);
+      while (cursor[id] < rows.length && rows[cursor[id]][0] <= t) held[id] = rows[cursor[id]++];
+      if (held[id]) sum += held[id][FIELD.subs];
+    }
+    return [t, sum];
+  });
+}
+
+function ratingOf(row) {
+  if (!row || row[FIELD.up] == null) return null;
+  const up = row[FIELD.up], down = row[FIELD.down] ?? 0;
+  return { up, down, total: up + down, pct: up + down ? up / (up + down) : null };
+}
+
+/* ---------- sparkline ----------
+   Drawn in real pixels off a measured container width, so the 2px stroke and
+   the round end-dot keep their geometry instead of being scaled by a viewBox. */
+
+function sparkline(host, points, colorVar, opts = {}) {
+  const height = opts.height ?? 62;
+  const width = host.clientWidth;
+
+  if (points.length < 2 || width < 40) {
+    host.innerHTML = `<div class="spark-empty">${
+      width < 40 ? "" : "Collecting history — the trend appears after the next change"
+    }</div>`;
+    return;
+  }
+
+  const padX = 8, padTop = 8, padBot = 10;
+  const xs = points.map((p) => p[0]);
+  const t0 = xs[0], t1 = xs.at(-1);
+  let lo = Math.min(...points.map((p) => p[1]));
+  let hi = Math.max(...points.map((p) => p[1]));
+  if (hi === lo) { hi += 1; lo -= 1; }            // flat series sits mid-band
+
+  const X = (t) => padX + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (width - 2 * padX);
+  const Y = (v) => height - padBot - ((v - lo) / (hi - lo)) * (height - padTop - padBot);
+
+  const pts = points.map((p) => [X(p[0]), Y(p[1])]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const area = `${line} L${pts.at(-1)[0].toFixed(1)} ${height - padBot} L${pts[0][0].toFixed(1)} ${height - padBot} Z`;
+  const [ex, ey] = pts.at(-1);
+  const c = `var(${colorVar})`;
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="${opts.label ?? "Trend"}: ${fmt(points[0][1])} on ${absTime(t0)} to ${fmt(points.at(-1)[1])} now">
+      <path d="${area}" fill="${c}" fill-opacity="0.10"/>
+      <path d="${line}" fill="none" stroke="${c}" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <line class="cross" x1="0" y1="${padTop - 4}" x2="0" y2="${height - padBot}"
+            stroke="var(--muted)" stroke-width="1" opacity="0"/>
+      <circle class="hit" r="4.5" fill="${c}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+      <circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="4"
+              fill="${c}" stroke="var(--surface)" stroke-width="2"/>
+    </svg>
+    <div class="tip"></div>`;
+
+  const svg = host.querySelector("svg");
+  const cross = host.querySelector(".cross");
+  const hit = host.querySelector(".hit");
+  const tip = host.querySelector(".tip");
+  const noun = opts.noun ?? "subscribers";
+
+  // Nearest-point in x — the hit area is the whole strip, not the 8px dot.
+  const move = (clientX) => {
+    const box = svg.getBoundingClientRect();
+    const px = clientX - box.left;
+    let best = 0;
+    for (let i = 1; i < pts.length; i++) {
+      if (Math.abs(pts[i][0] - px) < Math.abs(pts[best][0] - px)) best = i;
+    }
+    const [x, y] = pts[best];
+    cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("opacity", "1");
+    hit.setAttribute("cx", x); hit.setAttribute("cy", y); hit.setAttribute("opacity", "1");
+    tip.innerHTML = `<b>${fmt(points[best][1])}</b> ${noun}<span class="tip-t">${absTime(points[best][0])}</span>`;
+    tip.style.opacity = "1";
+    tip.style.left = `${Math.min(Math.max(x, 46), width - 46)}px`;
+    tip.style.top = `${Math.max(y - 8, 30)}px`;
+  };
+  const clear = () => {
+    cross.setAttribute("opacity", "0");
+    hit.setAttribute("opacity", "0");
+    tip.style.opacity = "0";
+  };
+
+  svg.addEventListener("pointermove", (e) => move(e.clientX));
+  svg.addEventListener("pointerdown", (e) => move(e.clientX));
+  svg.addEventListener("pointerleave", clear);
+}
+
+/* ---------- render ---------- */
+
+function render() {
+  if (!data) return;
+
+  document.querySelectorAll("#range button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(Number(b.dataset.days) === rangeDays));
+  });
+
+  // Hero
+  document.getElementById("hero-value").textContent = fmt(totalNow(FIELD.subs));
+  setDelta(document.getElementById("hero-delta"), totalDelta(FIELD.subs));
+  document.getElementById("hero-window").textContent = windowLabel();
+
+  const agg = totalSeries();
+  const cutoff = rangeDays === 0 ? 0 : Date.now() / 1000 - rangeDays * 86400;
+  const heroPts = agg.filter((p) => p[0] >= cutoff);
+  sparkline(document.getElementById("hero-spark"),
+    heroPts.length >= 2 ? heroPts : agg, "--s1", { height: 76, label: "Total subscribers" });
+
+  // KPI row
+  document.getElementById("kpi-favs").textContent = fmt(totalNow(FIELD.favs));
+  setDelta(document.getElementById("kpi-favs-d"), totalDelta(FIELD.favs), windowLabel());
+  document.getElementById("kpi-views").textContent = fmt(totalNow(FIELD.views));
+  setDelta(document.getElementById("kpi-views-d"), totalDelta(FIELD.views), windowLabel());
+
+  let up = 0, down = 0, haveVotes = false;
+  for (const id of data.order) {
+    const r = ratingOf(latest(id));
+    if (r) { up += r.up; down += r.down; haveVotes = true; }
+  }
+  const ratingEl = document.getElementById("kpi-rating");
+  const ratingD = document.getElementById("kpi-rating-d");
+  if (haveVotes && up + down > 0) {
+    ratingEl.textContent = `${Math.round((up / (up + down)) * 100)}%`;
+    ratingD.dataset.dir = "flat";
+    ratingD.textContent = `${fmt(up)} up · ${fmt(down)} down`;
+  } else {
+    ratingEl.textContent = "—";
+    ratingD.dataset.dir = "flat";
+    ratingD.textContent = haveVotes ? "No votes yet" : "Needs a Steam API key";
+  }
+
+  // Cards. Built in two passes: auto-fit grid tracks only settle once every card
+  // is in the DOM, and a sparkline measured before then draws at the full row
+  // width and spills into its neighbours.
+  const cards = document.getElementById("cards");
+  const pending = [];
+  cards.innerHTML = "";
+  for (const id of data.order) {
+    const mod = data.mods[id];
+    const row = latest(id);
+    if (!mod || !row) continue;
+
+    const was = baseline(id);
+    const colorVar = SLOT_VAR[mod.slot] ?? "--s1";
+    const r = ratingOf(row);
+
+    const el = document.createElement("article");
+    el.className = "card";
+    el.innerHTML = `
+      <div class="card-head">
+        <span class="swatch" style="background:var(${colorVar})"></span>
+        <a href="${mod.url}" target="_blank" rel="noopener">${mod.short}</a>
+      </div>
+      <div class="card-value-row">
+        <span class="card-value">${fmt(row[FIELD.subs])}</span>
+        <span class="card-value-label">subscribers</span>
+      </div>
+      <span class="delta" data-dir="flat"></span>
+      <div class="spark"></div>
+      <div class="foot">
+        <div>Favourites<b>${fmt(row[FIELD.favs])}</b></div>
+        <div>Views<b>${fmt(row[FIELD.views])}</b></div>
+        <div>Rating<b>${
+          r && r.total ? `${Math.round(r.pct * 100)}%` : "<span class='hint'>—</span>"
+        }</b></div>
+      </div>`;
+
+    setDelta(el.querySelector(".delta"),
+      was ? row[FIELD.subs] - was[FIELD.subs] : null, windowLabel());
+    cards.appendChild(el);
+
+    const pts = rowsFor(id).filter((p) => p[0] >= cutoff).map((p) => [p[0], p[FIELD.subs]]);
+    const all = rowsFor(id).map((p) => [p[0], p[FIELD.subs]]);
+    pending.push([el.querySelector(".spark"), pts.length >= 2 ? pts : all, colorVar, mod.short]);
+  }
+
+  for (const [host, pts, colorVar, label] of pending) {
+    sparkline(host, pts, colorVar, { label });
+  }
+
+  renderTable();
+  renderFreshness();
+}
+
+function renderTable() {
+  const tbody = document.querySelector("#table tbody");
+  const tfoot = document.querySelector("#table tfoot");
+  document.getElementById("th-change").textContent = `Change ${windowLabel()}`;
+  tbody.innerHTML = "";
+
+  for (const id of data.order) {
+    const mod = data.mods[id], row = latest(id), was = baseline(id);
+    if (!mod || !row) continue;
+    const d = was ? row[FIELD.subs] - was[FIELD.subs] : null;
+    const r = ratingOf(row);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="name-cell"><span class="swatch" style="background:var(${SLOT_VAR[mod.slot] ?? "--s1"})"></span>${mod.short}</span></td>
+      <td>${nf.format(row[FIELD.subs])}</td>
+      <td>${d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "−") + nf.format(Math.abs(d))}</td>
+      <td>${nf.format(row[FIELD.favs])}</td>
+      <td>${nf.format(row[FIELD.views])}</td>
+      <td>${r && r.total ? Math.round(r.pct * 100) + "%" : "—"}</td>
+      <td>${r ? `${r.up} / ${r.down}` : "—"}</td>
+      <td>${nf.format(row[FIELD.lifeSubs])}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  const dSubs = totalDelta(FIELD.subs);
+  tfoot.innerHTML = `<tr>
+    <td>Total</td>
+    <td>${fmt(totalNow(FIELD.subs))}</td>
+    <td>${dSubs == null ? "—" : dSubs === 0 ? "0" : (dSubs > 0 ? "+" : "−") + nf.format(Math.abs(dSubs))}</td>
+    <td>${fmt(totalNow(FIELD.favs))}</td>
+    <td>${fmt(totalNow(FIELD.views))}</td>
+    <td></td><td></td>
+    <td>${fmt(totalNow(FIELD.lifeSubs))}</td>
+  </tr>`;
+}
+
+function renderFreshness() {
+  const el = document.getElementById("freshness");
+  const pulse = document.getElementById("pulse");
+  if (!data?.updated) { el.textContent = "No data yet"; pulse.dataset.state = "stale"; return; }
+  const age = Date.now() / 1000 - data.updated;
+  el.textContent = `Last change ${relTime(data.updated)}`;
+  el.title = absTime(data.updated);
+  // The poller heartbeats every 6h, so nothing newer than ~7h means it stalled.
+  pulse.dataset.state = age > 7 * 3600 ? "stale" : "live";
+}
+
+/* ---------- load ---------- */
+
+async function load() {
+  const wrap = document.getElementById("wrap");
+  wrap.dataset.loading = "true";
+  try {
+    // Query-bust the Pages CDN, which caches assets for ~10 minutes by default.
+    const res = await fetch(`data/history.json?t=${Math.floor(Date.now() / 30_000)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+    document.getElementById("error-slot").innerHTML = "";
+    render();
+  } catch (err) {
+    document.getElementById("pulse").dataset.state = "error";
+    document.getElementById("error-slot").innerHTML =
+      `<div class="err">Couldn't load <code>data/history.json</code> (${err.message}). ` +
+      `If the poller has never run, trigger <b>Poll workshop stats</b> from the Actions tab.</div>`;
+  } finally {
+    wrap.dataset.loading = "false";
+  }
+}
+
+/* ---------- wiring ---------- */
+
+document.getElementById("range").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  rangeDays = Number(btn.dataset.days);
+  localStorage.setItem("rangeDays", String(rangeDays));
+  render();
+});
+
+document.getElementById("theme").addEventListener("click", () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("theme", next);
+  // No re-render needed: every SVG paint is a var(), so the marks retheme live.
+});
+
+const savedTheme = localStorage.getItem("theme");
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+
+let resizeTimer;
+addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(render, 150);
+});
+
+// Poll while visible only, and catch up the moment the tab comes back.
+setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+setInterval(renderFreshness, 30_000);
+
+load();
+</script>
+</body>
+</html>
