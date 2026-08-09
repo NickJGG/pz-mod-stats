@@ -1,6 +1,7 @@
 // Polls the Steam Workshop for each mod in mods.json and appends a sample to
-// data/history.json. Run by .github/workflows/poll.yml on a cron; the workflow
-// only commits when this script actually changes the file.
+// data/history.json. Run by .github/workflows/poll.yml on a cron, which restores
+// the file from the `stats-data` branch first and republishes it only when this
+// script reports `changed=true` on its step output.
 //
 // Two Steam endpoints are in play:
 //
@@ -13,7 +14,7 @@
 // Neither endpoint sends CORS headers, which is the whole reason the fetch
 // happens here in CI instead of in the browser.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { appendFile, readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -157,15 +158,20 @@ async function main() {
     }
   }
 
-  if (!changed) {
+  if (changed) {
+    history.updated = t;
+    await mkdir(dirname(HISTORY), { recursive: true });
+    await writeFile(HISTORY, JSON.stringify(history) + "\n");
+    console.log("history.json written");
+  } else {
     console.log("nothing to record");
-    return;
   }
 
-  history.updated = t;
-  await mkdir(dirname(HISTORY), { recursive: true });
-  await writeFile(HISTORY, JSON.stringify(history) + "\n");
-  console.log("history.json written");
+  // The workflow gates its force-push on this. Nothing else tracks the file, so
+  // a diff against the checkout can't answer the question the way it used to.
+  if (process.env.GITHUB_OUTPUT) {
+    await appendFile(process.env.GITHUB_OUTPUT, `changed=${changed}\n`);
+  }
 }
 
 await main();

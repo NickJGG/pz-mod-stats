@@ -306,8 +306,50 @@ const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3" };
 const POLL_MS = 60_000;
 const FIELD = { t: 0, subs: 1, favs: 2, views: 3, lifeSubs: 4, lifeFavs: 5, up: 6, down: 7 };
 
+// The poller rewrites history.json every 15 minutes. Keeping it on its own
+// orphan branch instead of in the site means those rewrites cost master nothing
+// — no commit, and no Pages rebuild. raw.githubusercontent serves it with
+// `access-control-allow-origin: *`, so the cross-origin fetch is fine.
+const DATA_BRANCH = "stats-data";
+// Must be explicit once the page is served from Vercel: there's no github.io
+// hostname left to derive it from, and the fallback would look for a local
+// data/ directory that only exists in a checkout. deriveRepo() still covers a
+// Pages deployment, so this one file works correctly from either origin.
+const DATA_REPO = "nickjgg/pz-mod-stats";
+
+function dataUrl() {
+  const repo = DATA_REPO ?? deriveRepo();
+  // No repo to derive means a local checkout — read whatever the last local
+  // run of scripts/fetch.mjs wrote.
+  return repo
+    ? `https://raw.githubusercontent.com/${repo}/${DATA_BRANCH}/data/history.json`
+    : "data/history.json";
+}
+
+function deriveRepo() {
+  const owner = location.hostname.match(/^([\w-]+)\.github\.io$/i)?.[1];
+  if (!owner) return null;
+  // Strip the filename: /pz-mod-stats/index.html -> /pz-mod-stats/ -> project
+  // repo; /index.html -> / -> the user site, whose repo is <owner>.github.io.
+  const dir = location.pathname.replace(/[^/]*$/, "");
+  const seg = dir.split("/").filter(Boolean)[0];
+  return `${owner}/${seg ?? `${owner}.github.io`}`;
+}
+
 let data = null;
 let rangeDays = Number(localStorage.getItem("rangeDays") ?? 7);
+
+// Live current numbers from api/stats.js, in history-row shape. Held in memory
+// only — nothing here is ever written down, which is the point: the tiles can
+// refresh every minute without anything being recorded every minute.
+const LIVE_URL = "/api/stats";
+const LIVE_MS = 60_000;
+let live = {};
+let liveAt = 0;
+// Flipped off permanently the first time the endpoint isn't there, so a static
+// deployment without the function degrades to history-only instead of retrying
+// into the void once a minute.
+let liveOn = true;
 
 /* ---------- formatting ---------- */
 
@@ -354,7 +396,11 @@ function setDelta(el, diff, suffix = "") {
 
 const rowsFor = (id) => data?.series?.[id] ?? [];
 
-const latest = (id) => rowsFor(id).at(-1) ?? null;
+// Current values prefer the live reading from /api/stats; charts and baselines
+// deliberately don't, since those describe recorded history. Splicing the two
+// sources together here means every tile, delta and table cell picks up live
+// numbers without any of the render code knowing there are two sources at all.
+const latest = (id) => live[id] ?? rowsFor(id).at(-1) ?? null;
 
 // The sample the comparison window starts from: the last one at or before the
 // cutoff, else the oldest we hold (so a young mod compares against launch).
@@ -626,6 +672,15 @@ function renderTable() {
 function renderFreshness() {
   const el = document.getElementById("freshness");
   const pulse = document.getElementById("pulse");
+  // A recent live reading is the strongest freshness signal there is — it means
+  // we just spoke to Steam. Only fall back to the recorded timestamp if live
+  // polling has gone quiet, which is itself the thing worth surfacing.
+  if (liveAt && Date.now() / 1000 - liveAt < 5 * 60) {
+    el.textContent = `Live · checked ${relTime(liveAt)}`;
+    el.title = absTime(liveAt);
+    pulse.dataset.state = "live";
+    return;
+  }
   if (!data?.updated) { el.textContent = "No data yet"; pulse.dataset.state = "stale"; return; }
   const age = Date.now() / 1000 - data.updated;
   el.textContent = `Last change ${relTime(data.updated)}`;
@@ -640,8 +695,11 @@ async function load() {
   const wrap = document.getElementById("wrap");
   wrap.dataset.loading = "true";
   try {
-    // Query-bust the Pages CDN, which caches assets for ~10 minutes by default.
-    const res = await fetch(`data/history.json?t=${Math.floor(Date.now() / 30_000)}`, { cache: "no-store" });
+    // Query-bust the CDN in front of the data branch: it holds raw files for
+    // ~5 minutes, which is now the whole poll interval, so serving a cached copy
+    // would cost a full sample rather than a rounding error.
+    const url = `${dataUrl()}?t=${Math.floor(Date.now() / 30_000)}`;
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
     document.getElementById("error-slot").innerHTML = "";
@@ -649,10 +707,28 @@ async function load() {
   } catch (err) {
     document.getElementById("pulse").dataset.state = "error";
     document.getElementById("error-slot").innerHTML =
-      `<div class="err">Couldn't load <code>data/history.json</code> (${err.message}). ` +
-      `If the poller has never run, trigger <b>Poll workshop stats</b> from the Actions tab.</div>`;
+      `<div class="err">Couldn't load history from the <code>${DATA_BRANCH}</code> branch ` +
+      `(${err.message}). If the poller has never run, trigger <b>Poll workshop stats</b> ` +
+      `from the Actions tab — the branch doesn't exist until it does.</div>`;
   } finally {
     wrap.dataset.loading = "false";
+  }
+}
+
+// Deliberately silent on failure. The history load owns the error slot; a
+// missing function is a deployment shape, not something the reader did wrong.
+async function loadLive() {
+  if (!liveOn) return;
+  try {
+    const res = await fetch(LIVE_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    live = json.rows ?? {};
+    liveAt = json.t ?? Math.floor(Date.now() / 1000);
+    if (data) render();
+    renderFreshness();
+  } catch {
+    liveOn = false;
   }
 }
 
@@ -684,12 +760,20 @@ addEventListener("resize", () => {
   resizeTimer = setTimeout(render, 150);
 });
 
-// Poll while visible only, and catch up the moment the tab comes back.
+// Poll while visible only, and catch up the moment the tab comes back. Visible-
+// only matters more now that a poll costs a function invocation, not just a
+// cached file read — a backgrounded tab shouldn't burn quota all night.
 setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+setInterval(() => { if (!document.hidden) loadLive(); }, LIVE_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  load();
+  loadLive();
+});
 setInterval(renderFreshness, 30_000);
 
 load();
+loadLive();
 </script>
 </body>
 </html>

@@ -2,16 +2,18 @@ name: Poll workshop stats
 
 on:
   schedule:
-    # Every 15 minutes. GitHub queues cron runs on a best-effort basis, so treat
-    # this as "at least every 15 min" rather than a guarantee. Four commits an
-    # hour also keeps us under the ~10 Pages builds/hour soft limit.
-    - cron: "*/15 * * * *"
+    # Five minutes is GitHub's documented floor for `schedule:`, and runs are
+    # queued best-effort on top of that, so treat this as "no faster than 5 min"
+    # rather than a promise. This used to be */15 only because each sample was a
+    # commit to master and so a Pages rebuild; off the data branch, nothing
+    # rebuilds and the limit no longer applies.
+    - cron: "*/5 * * * *"
   workflow_dispatch: # lets you force a check from the Actions tab
 
 permissions:
   contents: write
 
-# Never let two polls race on the same push.
+# Never let two polls race on the force-push.
 concurrency:
   group: poll-workshop-stats
   cancel-in-progress: false
@@ -26,21 +28,38 @@ jobs:
         with:
           node-version: "20"
 
+      # The samples live on the `stats-data` orphan branch rather than in the
+      # site itself, so 96 polls a day don't put 96 commits on master. Pull the
+      # accumulated file back into the working tree for fetch.mjs to append to.
+      - name: Restore accumulated history
+        run: |
+          if git fetch --depth=1 --no-tags origin stats-data 2>/dev/null; then
+            mkdir -p data
+            # No `|| true` here on purpose: if the branch exists but we can't
+            # read it, aborting is right. Carrying on would start from an empty
+            # history and the force-push below would overwrite the real one.
+            git show FETCH_HEAD:data/history.json > data/history.json
+            echo "restored $(wc -c < data/history.json) bytes"
+          else
+            echo "no stats-data branch yet — starting fresh"
+          fi
+
       - name: Fetch stats
+        id: fetch
         env:
           # Optional. Without it, everything but the star rating still records.
           STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
         run: node scripts/fetch.mjs
 
-      - name: Commit if the numbers moved
+      # Rebuilt as a parentless commit every time and force-pushed, so the
+      # branch is always exactly one commit deep and never accumulates history.
+      - name: Publish to the data branch
+        if: steps.fetch.outputs.changed == 'true'
         run: |
-          if [ -z "$(git status --porcelain data/history.json)" ]; then
-            echo "No change to record."
-            exit 0
-          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/history.json
-          git commit -m "stats: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git pull --rebase --autostash
-          git push
+          git checkout --orphan stats-data-build
+          git rm -rf --cached . > /dev/null
+          git add -f data/history.json
+          git commit -q -m "stats: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push --force origin HEAD:stats-data
