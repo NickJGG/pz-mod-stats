@@ -4,6 +4,7 @@
   "mods": [
     { "id": "3778868211", "short": "Turn Off Fridges", "slot": 1 },
     { "id": "3777800131", "short": "Book Tracker", "slot": 2 },
-    { "id": "3779516831", "short": "Auto Trunk", "slot": 3 }
+    { "id": "3779516831", "short": "Auto Trunk", "slot": 3 },
+    { "id": "3780532913", "short": "Sledgehammer Fix", "slot": 4 }
   ]
 }
