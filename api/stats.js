@@ -79,12 +79,29 @@ module.exports = async function handler(req, res) {
     const rows = {};
     for (const [id, d] of details) rows[id] = toRow(t, d, votes.get(id));
 
+    // Mirror history.json's `mods`/`order` shape as well as its row shape, so
+    // the page can render from this payload alone when history is unreachable
+    // — a private repo, or simply before the poller's first run.
+    const meta = {};
+    for (const m of mods) {
+      const d = details.get(m.id);
+      if (!d) continue;
+      meta[m.id] = {
+        title: d.title,
+        short: m.short,
+        slot: m.slot,
+        created: d.time_created,
+        updated: d.time_updated,
+        url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${m.id}`,
+      };
+    }
+
     // Served from Vercel's edge for 30s without re-invoking this function, so a
     // hundred open tabs still cost Steam one request per 30s — and cost us
     // almost no invocations. The page polls every 60s, so this is never stale
     // enough to matter.
     res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
-    res.status(200).json({ t, rows });
+    res.status(200).json({ t, order: IDS, mods: meta, rows });
   } catch (err) {
     // 502, not 500: we're reporting that Steam failed us, not that we broke.
     res.setHeader("Cache-Control", "no-store");

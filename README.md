@@ -8,14 +8,18 @@ favourites, views and ratings, on one page that refreshes itself.
 ## How it works
 
 Steam's Workshop API sends no CORS headers, so a browser can't call it directly
-from another origin. The fetch therefore happens in CI:
+from another origin. Everything below follows from that one fact — it's why the
+recorded history is gathered in CI, and why live numbers need a same-origin
+function rather than a direct call.
+
+History is recorded on a cron:
 
 ```
 cron (5 min) ──▶ scripts/fetch.mjs ──▶ data/history.json ──▶ force-push
                                               ▲                    │
                                               └── stats-data branch ◀┘
                                                         │
-        index.html (on Pages, from master) polls it every 60s via raw. ◀┘
+                index.html polls it every 60s via raw.  ◀┘
 ```
 
 `data/history.json` accumulates a sample every time a number moves, so the page
@@ -24,10 +28,10 @@ shows growth over time — something the Workshop itself never gives you.
 **That file is not in the site, and not on `master`.** It lives alone on the
 `stats-data` orphan branch, which the poller rebuilds as a parentless commit and
 force-pushes each run. So it is always exactly one commit deep no matter how
-many years of samples it holds, and 96 polls a day add nothing to `master`'s
+many years of samples it holds, and 288 polls a day add nothing to `master`'s
 history. The page reads it cross-origin from `raw.githubusercontent.com`, which
-sends `access-control-allow-origin: *`; `index.html` derives the owner and repo
-from the Pages hostname, so nothing hardcodes the account.
+sends `access-control-allow-origin: *`, using the `DATA_REPO` constant at the
+top of `index.html`'s script.
 
 The trade is that there's no per-sample audit trail — the branch remembers the
 current file, not how it got there. Given the file *is* the history, that costs
@@ -64,8 +68,9 @@ picks up `/api` automatically — no `package.json`, no build step, no config.
 Set `STEAM_API_KEY` in the project's environment variables if you want live star
 ratings; without it, `up`/`down` come back null exactly as they do in CI.
 
-Note that `DATA_REPO` in `index.html` is hardcoded, because once the page is
-served from Vercel there's no `github.io` hostname left to derive it from.
+`DATA_REPO` is hardcoded rather than derived from the hostname: served from
+Vercel there's no `github.io` name to read it from. Change it if you fork or
+rename the repo, or the charts will quietly load nothing.
 
 Two Steam endpoints are involved:
 
@@ -79,20 +84,29 @@ Without `STEAM_API_KEY` set, everything but the rating still records.
 ## Setup
 
 1. **Create a public repo** named `pz-mod-stats` and push this directory to it.
-   Public matters: GitHub Pages on a private repo needs a paid plan.
+   Public matters: Actions minutes are free on public repos, and GitHub Pages on
+   a private one needs a paid plan.
 
-2. **Enable Pages** — Settings → Pages → Source: *Deploy from a branch*,
-   branch `master`, folder `/ (root)`. Leave it on `master`; the poller's
-   `stats-data` branch is data only and is never served by Pages.
+2. **Kick off the poller** — Actions → *Poll workshop stats* → Run workflow. The
+   first run creates the `stats-data` branch; until it exists the page has no
+   history to draw. After that the cron takes over.
 
-3. **Add the rating key** (optional) — grab one at
-   <https://steamcommunity.com/dev/apikey> (domain can be anything), then
-   Settings → Secrets and variables → Actions → New repository secret,
-   named `STEAM_API_KEY`.
+3. **Deploy to Vercel** — point a new project at the repo. It serves
+   `index.html` statically and picks up `/api` automatically: no framework
+   preset, no build command, no config file. This is what makes the live numbers
+   work, since the function has to share an origin with the page.
 
-4. **Kick it off** — Actions → *Poll workshop stats* → Run workflow. The first
-   run creates the `stats-data` branch; until it does, the page will say it
-   can't load the history. After that the cron takes over.
+4. **Add the rating key** (optional) — grab one at
+   <https://steamcommunity.com/dev/apikey> (domain can be anything). It goes in
+   **two places**, because two things call the keyed endpoint: repo Settings →
+   Secrets and variables → Actions → `STEAM_API_KEY` for the poller, and the
+   Vercel project's environment variables for the live function. Setting only
+   one gives you ratings in only half the page.
+
+GitHub Pages still works as a deployment if you'd rather not use Vercel — you
+just get history-only, with the tiles refreshing every 5 minutes instead of
+every 60 seconds. Source: *Deploy from a branch*, branch `master`, folder
+`/ (root)`. Leave it on `master`; `stats-data` is data and is never served.
 
 The page works on a phone; "Add to Home Screen" gives it an icon and opens it
 without browser chrome.
@@ -102,12 +116,17 @@ without browser chrome.
 Append to `mods.json` with the next free `slot`:
 
 ```json
-{ "id": "1234567890", "short": "Display Name", "slot": 4 }
+{ "id": "1234567890", "short": "Display Name", "slot": 5 }
 ```
 
 `slot` fixes the chart colour to the mod, so reordering or removing entries
 never repaints the others. Slots map to the categorical palette in
-`index.html` (`--s1`…`--s3`); add a `--s4` token if you go past three.
+`index.html` (`--s1`…`--s4`, declared once per theme block and listed in
+`SLOT_VAR`); add a `--s5` token in all three blocks if you go past four.
+
+`mods.json` is the only place to edit — both `scripts/fetch.mjs` and
+`api/stats.js` read their IDs from it, so the poller and the live endpoint can't
+drift apart. Vercel redeploys on push, so the new mod appears in both.
 
 ## Notes
 
