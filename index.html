@@ -32,6 +32,8 @@
   --s2:         #eb6834;
   --s3:         #1baf7a;
   --s4:         #eda100;
+  --s5:         #7d57d1;
+  --s6:         #c25596;
   --shadow:     0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.04);
 }
 @media (prefers-color-scheme: dark) {
@@ -50,6 +52,8 @@
     --s2:      #d95926;
     --s3:      #199e70;
     --s4:      #c98500;
+    --s5:      #9370e8;
+    --s6:      #b04f8b;
     --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
   }
 }
@@ -68,6 +72,8 @@
   --s2:      #d95926;
   --s3:      #199e70;
   --s4:      #c98500;
+  --s5:      #9370e8;
+  --s6:      #b04f8b;
   --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
 }
 
@@ -305,38 +311,21 @@ footer.page a { color: var(--ink-2); }
 <script>
 "use strict";
 
-const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3", 4: "--s4" };
+const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3", 4: "--s4", 5: "--s5", 6: "--s6" };
 const POLL_MS = 60_000;
 const FIELD = { t: 0, subs: 1, favs: 2, views: 3, lifeSubs: 4, lifeFavs: 5, up: 6, down: 7 };
 
-// The poller rewrites history.json every 15 minutes. Keeping it on its own
-// orphan branch instead of in the site means those rewrites cost master nothing
-// — no commit, and no Pages rebuild. raw.githubusercontent serves it with
-// `access-control-allow-origin: *`, so the cross-origin fetch is fine.
+// The poller rewrites history.json every 5 minutes. Keeping it on its own
+// orphan branch instead of in the site means those rewrites cost master
+// nothing. raw.githubusercontent serves it with `access-control-allow-origin:
+// *`, so the cross-origin fetch is fine.
 const DATA_BRANCH = "stats-data";
-// Must be explicit once the page is served from Vercel: there's no github.io
-// hostname left to derive it from, and the fallback would look for a local
-// data/ directory that only exists in a checkout. deriveRepo() still covers a
-// Pages deployment, so this one file works correctly from either origin.
+// Hardcoded because the page is served from Vercel: there's no github.io
+// hostname to derive it from. Change it if you fork or rename the repo.
 const DATA_REPO = "nickjgg/pz-mod-stats";
 
 function dataUrl() {
-  const repo = DATA_REPO ?? deriveRepo();
-  // No repo to derive means a local checkout — read whatever the last local
-  // run of scripts/fetch.mjs wrote.
-  return repo
-    ? `https://raw.githubusercontent.com/${repo}/${DATA_BRANCH}/data/history.json`
-    : "data/history.json";
-}
-
-function deriveRepo() {
-  const owner = location.hostname.match(/^([\w-]+)\.github\.io$/i)?.[1];
-  if (!owner) return null;
-  // Strip the filename: /pz-mod-stats/index.html -> /pz-mod-stats/ -> project
-  // repo; /index.html -> / -> the user site, whose repo is <owner>.github.io.
-  const dir = location.pathname.replace(/[^/]*$/, "");
-  const seg = dir.split("/").filter(Boolean)[0];
-  return `${owner}/${seg ?? `${owner}.github.io`}`;
+  return `https://raw.githubusercontent.com/${DATA_REPO}/${DATA_BRANCH}/data/history.json`;
 }
 
 let data = null;

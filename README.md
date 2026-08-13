@@ -3,7 +3,7 @@
 A self-updating dashboard for my Project Zomboid Workshop mods — subscribers,
 favourites, views and ratings, on one page that refreshes itself.
 
-**Live page:** https://nickjgg.github.io/pz-mod-stats/
+**Live page:** https://pz-mod-stats.vercel.app/
 
 ## How it works
 
@@ -56,8 +56,9 @@ nothing is cross-origin. It returns rows in exactly the `fields` order used by
 delta and table cell picks them up without the render code knowing there are two
 sources. Charts and baselines deliberately keep using recorded history.
 
-If the function isn't there — a plain GitHub Pages deployment, say — the page
-notices the first 404 and silently falls back to history-only. Nothing breaks.
+If the function isn't there — a static host with no serverless runtime, or a
+local `index.html` opened straight off disk — the page notices the first 404 and
+silently falls back to history-only. Nothing breaks.
 
 `Cache-Control: s-maxage=30` means Vercel's edge answers most requests without
 invoking the function, so a hundred open tabs still cost Steam one call per 30
@@ -84,8 +85,9 @@ Without `STEAM_API_KEY` set, everything but the rating still records.
 ## Setup
 
 1. **Create a public repo** named `pz-mod-stats` and push this directory to it.
-   Public matters: Actions minutes are free on public repos, and GitHub Pages on
-   a private one needs a paid plan.
+   Public matters for two reasons: Actions minutes are free on public repos, and
+   the page reads `history.json` anonymously from `raw.githubusercontent.com`,
+   which only works on a public repo.
 
 2. **Kick off the poller** — Actions → *Poll workshop stats* → Run workflow. The
    first run creates the `stats-data` branch; until it exists the page has no
@@ -103,11 +105,6 @@ Without `STEAM_API_KEY` set, everything but the rating still records.
    Vercel project's environment variables for the live function. Setting only
    one gives you ratings in only half the page.
 
-GitHub Pages still works as a deployment if you'd rather not use Vercel — you
-just get history-only, with the tiles refreshing every 5 minutes instead of
-every 60 seconds. Source: *Deploy from a branch*, branch `master`, folder
-`/ (root)`. Leave it on `master`; `stats-data` is data and is never served.
-
 The page works on a phone; "Add to Home Screen" gives it an icon and opens it
 without browser chrome.
 
@@ -116,13 +113,13 @@ without browser chrome.
 Append to `mods.json` with the next free `slot`:
 
 ```json
-{ "id": "1234567890", "short": "Display Name", "slot": 5 }
+{ "id": "1234567890", "short": "Display Name", "slot": 7 }
 ```
 
 `slot` fixes the chart colour to the mod, so reordering or removing entries
 never repaints the others. Slots map to the categorical palette in
-`index.html` (`--s1`…`--s4`, declared once per theme block and listed in
-`SLOT_VAR`); add a `--s5` token in all three blocks if you go past four.
+`index.html` (`--s1`…`--s6`, declared once per theme block and listed in
+`SLOT_VAR`); add a `--s7` token in all three blocks if you go past six.
 
 `mods.json` is the only place to edit — both `scripts/fetch.mjs` and
 `api/stats.js` read their IDs from it, so the poller and the live endpoint can't
@@ -135,9 +132,6 @@ drift apart. Vercel redeploys on push, so the new mod appears in both.
   push anything and re-enable the workflow in the Actions tab.
 - The poll runs every 5 minutes, which is GitHub's documented floor for
   `schedule:` — and runs are queued best-effort on top of that, so it's a floor,
-  not a promise. It was `*/15` until the data moved off `master`, purely because
-  each sample was a commit and so a Pages rebuild against the ~10 builds/hour
-  soft limit. Nothing rebuilds now, so 5 is simply the fastest cron GitHub
-  offers. Going below it means polling from outside Actions.
+  not a promise. Going below it means polling from outside Actions.
 - Old samples are thinned to one per day after 45 days to keep the file small.
 - `python tools/make_icons.py` regenerates the home-screen icons.

@@ -4,9 +4,7 @@ on:
   schedule:
     # Five minutes is GitHub's documented floor for `schedule:`, and runs are
     # queued best-effort on top of that, so treat this as "no faster than 5 min"
-    # rather than a promise. This used to be */15 only because each sample was a
-    # commit to master and so a Pages rebuild; off the data branch, nothing
-    # rebuilds and the limit no longer applies.
+    # rather than a promise.
     - cron: "*/5 * * * *"
   workflow_dispatch: # lets you force a check from the Actions tab
 
@@ -29,7 +27,7 @@ jobs:
           node-version: "20"
 
       # The samples live on the `stats-data` orphan branch rather than in the
-      # site itself, so 96 polls a day don't put 96 commits on master. Pull the
+      # site itself, so 288 polls a day don't put 288 commits on master. Pull the
       # accumulated file back into the working tree for fetch.mjs to append to.
       - name: Restore accumulated history
         run: |
