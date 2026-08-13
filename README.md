@@ -113,13 +113,13 @@ without browser chrome.
 Append to `mods.json` with the next free `slot`:
 
 ```json
-{ "id": "1234567890", "short": "Display Name", "slot": 7 }
+{ "id": "1234567890", "short": "Display Name", "slot": 8 }
 ```
 
 `slot` fixes the chart colour to the mod, so reordering or removing entries
 never repaints the others. Slots map to the categorical palette in
-`index.html` (`--s1`…`--s6`, declared once per theme block and listed in
-`SLOT_VAR`); add a `--s7` token in all three blocks if you go past six.
+`index.html` (`--s1`…`--s7`, declared once per theme block and listed in
+`SLOT_VAR`); add a `--s8` token in all three blocks if you go past seven.
 
 `mods.json` is the only place to edit — both `scripts/fetch.mjs` and
 `api/stats.js` read their IDs from it, so the poller and the live endpoint can't
