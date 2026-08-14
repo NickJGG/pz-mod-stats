@@ -147,6 +147,11 @@ drift apart. Vercel redeploys on push, so the new mod appears in both.
 
 ## Notes
 
+- A single mod can be opened on its own — click a card, or the chevron on it.
+  The page scopes to that mod rather than opening a panel: the hero, the tiles
+  and the table all follow, and every chart mode keeps working (Stacked steps
+  aside, since a stack of one band is just the line). The scope lives in the
+  hash as `#mod=<id>`, so a focused view is linkable and survives a reload.
 - Scheduled workflows are disabled after 60 days of repository inactivity. The
   poller's own pushes to `stats-data` should count, but if it ever goes quiet,
   push anything and re-enable the workflow in the Actions tab.

@@ -137,6 +137,30 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
 }
 #sortdir { min-width: 32px; padding: 5px 8px; }
 
+/* ---- Focus scope ---- */
+.crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+.crumb #crumb-back {
+  background: none; border: 0; padding: 0; min-height: 0;
+  color: var(--ink-2); text-decoration: underline; cursor: pointer;
+}
+.crumb #crumb-back:hover { color: var(--ink); }
+.crumb .cur { color: var(--ink); font-weight: 600; }
+
+/* The update log gets the cards container to itself: in focus scope there is
+   one mod, and a grid of one card next to a chart of the same mod is a
+   duplicate, not a summary. */
+.cards.focus-view { display: block; }
+.focus-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; }
+.log-row {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 10px 0; border-top: 1px solid var(--grid); font-size: 13.5px;
+}
+.log-row:first-child { border-top: 0; }
+.log-when { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.log-impact { margin-left: auto; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.log-vs { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-note { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+
 /* ---- Hero ---- */
 .hero {
   background: var(--surface); border: 1px solid var(--border);
@@ -176,9 +200,10 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
 
 /* ---- KPI row ---- */
 .kpis {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   gap: 16px; margin-bottom: 28px;
 }
+@media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
 .kpi {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px;
@@ -202,7 +227,14 @@ h2.section {
   border-radius: 14px; box-shadow: var(--shadow); padding: 18px 20px 14px;
   display: flex; flex-direction: column;
 }
+.card { cursor: pointer; }
+.card:hover { border-color: var(--muted); }
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.card-focus {
+  margin-left: auto; padding: 2px 8px; min-height: 24px;
+  color: var(--muted); font-size: 15px; line-height: 1;
+}
+.card:hover .card-focus { color: var(--ink); }
 .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .card-head a { color: inherit; text-decoration: none; font-weight: 600; font-size: 14.5px; }
 .card-head a:hover { text-decoration: underline; }
@@ -274,7 +306,7 @@ details.table-view summary {
 }
 details.table-view summary:hover { color: var(--ink); }
 .table-scroll { overflow-x: auto; margin-top: 10px; }
-table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 680px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 760px; }
 th, td { text-align: right; padding: 9px 12px; border-bottom: 1px solid var(--grid); }
 th:first-child, td:first-child { text-align: left; }
 thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
@@ -331,6 +363,12 @@ footer.page a { color: var(--ink-2); }
 
   <div id="error-slot"></div>
 
+  <nav class="crumb" id="crumb" hidden aria-label="Scope">
+    <button type="button" id="crumb-back">All mods</button>
+    <span class="sep" aria-hidden="true">›</span>
+    <span class="cur" id="crumb-cur"></span>
+  </nav>
+
   <div class="filters">
     <div class="seg" id="range" role="group" aria-label="Comparison window">
       <button type="button" data-hours="3">3h</button>
@@ -342,10 +380,10 @@ footer.page a { color: var(--ink-2); }
     </div>
   </div>
 
-  <section class="hero" aria-label="Total subscribers">
+  <section class="hero" id="hero" aria-label="Total subscribers">
     <div class="hero-top">
       <div>
-        <div class="hero-label">Total subscribers</div>
+        <div class="hero-label" id="hero-label">Total subscribers</div>
         <div class="hero-value" id="hero-value">—</div>
         <div class="hero-sub">
           <span class="delta" id="hero-delta" data-dir="flat">—</span>
@@ -357,6 +395,7 @@ footer.page a { color: var(--ink-2); }
           <button type="button" data-mode="total" aria-pressed="true">Total</button>
           <button type="button" data-mode="stacked">Stacked</button>
           <button type="button" data-mode="velocity">Velocity</button>
+          <button type="button" data-mode="churn" title="Everyone who subscribed against what stuck">Churn</button>
           <button type="button" data-mode="launch">Since launch</button>
         </div>
         <button type="button" id="hero-log" aria-pressed="false" title="Logarithmic scale">Log</button>
@@ -371,11 +410,12 @@ footer.page a { color: var(--ink-2); }
     <div class="kpi"><div class="k-label">Favourites</div><div class="k-value" id="kpi-favs">—</div><span class="delta" id="kpi-favs-d" data-dir="flat">—</span></div>
     <div class="kpi"><div class="k-label">Views</div><div class="k-value" id="kpi-views">—</div><span class="delta" id="kpi-views-d" data-dir="flat">—</span></div>
     <div class="kpi"><div class="k-label">Rating</div><div class="k-value" id="kpi-rating">—</div><span class="delta" id="kpi-rating-d" data-dir="flat">—</span></div>
+    <div class="kpi" title="Everyone who subscribed in the window, minus what stuck"><div class="k-label">Unsubscribed</div><div class="k-value" id="kpi-lost">—</div><span class="delta" id="kpi-lost-d" data-dir="flat">—</span></div>
   </div>
 
   <div class="section-head">
-    <h2 class="section">By mod</h2>
-    <div class="sort-group">
+    <h2 class="section" id="cards-head">By mod</h2>
+    <div class="sort-group" id="sort-group">
       <label class="label" for="sort">Sort by</label>
       <select id="sort"></select>
       <button type="button" id="sortdir" title="Reverse sort direction">↓</button>
@@ -391,6 +431,7 @@ footer.page a { color: var(--ink-2); }
           <th scope="col">Mod</th>
           <th scope="col" aria-sort="descending"><button type="button" class="th-sort" data-metric="subs">Subscribers</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="movers" id="th-change">Change</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="left" id="th-left" title="Everyone who subscribed in the window, minus what stuck">Left</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="favs">Favourites</button></th>
           <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="views">Views</button></th>
           <th scope="col">Rating</th><th scope="col">Votes</th>
@@ -448,7 +489,7 @@ function readRange() {
 }
 let rangeHours = readRange();
 
-const MODES = ["total", "stacked", "velocity", "launch"];
+const MODES = ["total", "stacked", "velocity", "churn", "launch"];
 let heroMode = MODES.includes(localStorage.getItem("heroMode")) ? localStorage.getItem("heroMode") : "total";
 let heroLog = localStorage.getItem("heroLog") === "1";
 
@@ -458,10 +499,40 @@ let heroLog = localStorage.getItem("heroLog") === "1";
 // fill the bars, so the mode steps aside. `heroMode` itself is left alone:
 // widening the range brings the chart straight back.
 const velocityOk = () => rangeHours === 0 || rangeHours >= 24;
-const effMode = () => (heroMode === "velocity" && !velocityOk() ? "total" : heroMode);
+// Churn is bucketed the same way and so inherits the same floor.
+const bucketed = (m) => m === "velocity" || m === "churn";
+// Stacked steps aside under a focused mod for the same reason velocity steps
+// aside under a short window: a stack of one band is just the line.
+const effMode = () => {
+  if (bucketed(heroMode) && !velocityOk()) return "total";
+  if (heroMode === "stacked" && focused()) return "total";
+  return heroMode;
+};
 // Hero-only, in memory only: which mod is on screen isn't worth restoring a
 // week later, and a persisted hide would look like missing data.
 const hiddenIds = new Set();
+
+// The mod the whole page is scoped to, or null for all of them. It lives in the
+// hash rather than localStorage so a focused view can be linked and survives a
+// reload, and so leaving it is a normal back-button step.
+function readFocus() {
+  const m = location.hash.match(/^#mod=(\d+)$/);
+  return m ? m[1] : null;
+}
+let focusId = readFocus();
+
+// Always ask through this: a hash naming a mod that no longer exists has to
+// behave exactly like no hash at all, not blank every figure on the page.
+const focused = () => (focusId && data?.mods?.[focusId] ? focusId : null);
+const scopeIds = () => (focused() ? [focused()] : data.order);
+
+function setFocus(id) {
+  focusId = id;
+  const hash = id ? `#mod=${id}` : "";
+  history.replaceState(null, "", location.pathname + location.search + hash);
+  scrollTo({ top: 0, behavior: "smooth" });
+  render();
+}
 
 // Live current numbers from api/stats.js, in history-row shape. Held in memory
 // only — nothing here is ever written down, which is the point: the tiles can
@@ -589,7 +660,7 @@ function baseline(id) {
 
 function totalNow(field) {
   let sum = 0, any = false;
-  for (const id of data.order) {
+  for (const id of scopeIds()) {
     const r = latest(id);
     if (r && r[field] != null) { sum += r[field]; any = true; }
   }
@@ -598,7 +669,7 @@ function totalNow(field) {
 
 function totalDelta(field) {
   let diff = 0, any = false;
-  for (const id of data.order) {
+  for (const id of scopeIds()) {
     const now = latest(id), was = baseline(id);
     if (now && was && now[field] != null && was[field] != null) { diff += now[field] - was[field]; any = true; }
   }
@@ -633,8 +704,8 @@ function alignedSeries(ids) {
   return { stamps: sorted, values, total };
 }
 
-function totalSeries() {
-  const { stamps, total } = alignedSeries(data.order);
+function totalSeries(ids = data.order) {
+  const { stamps, total } = alignedSeries(ids);
   return stamps.map((t, i) => [t, total[i]]);
 }
 
@@ -664,6 +735,54 @@ function velocity(id, from, to, sec) {
   return out;
 }
 
+// Joins and departures per bucket. Steam publishes no unsubscribe counter, but
+// it publishes both a lifetime total and a current one: everyone who ever
+// subscribed, against what stuck. The gap between the two deltas is the only
+// place a page can see someone leave at all.
+// Both sides are floored at zero — a lifetime counter that steps backwards is
+// Steam correcting itself, not a negative crowd of subscribers.
+function flow(id, from, to, sec) {
+  const rows = rowsLive(id);
+  if (rows.length < 2) return [];
+  const last = rows.at(-1)[0];
+  const start = Math.floor(from / sec) * sec;
+
+  let i = 0, held = null;
+  while (i < rows.length && rows[i][0] <= start) held = rows[i++];
+
+  const out = [];
+  for (let b = start; b < to; b += sec) {
+    const prior = held;
+    while (i < rows.length && rows[i][0] <= b + sec) held = rows[i++];
+    if (!prior || b > last) continue;
+    if (prior[FIELD.lifeSubs] == null || held[FIELD.lifeSubs] == null) continue;
+    const joined = Math.max(0, held[FIELD.lifeSubs] - prior[FIELD.lifeSubs]);
+    const net = held[FIELD.subs] - prior[FIELD.subs];
+    out.push([b, joined, Math.max(0, joined - net), b + sec > last]);
+  }
+  return out;
+}
+
+// The same decomposition over the comparison window rather than per bucket, for
+// the tile, the table and the sort.
+function churnOf(id) {
+  const now = latest(id), was = baseline(id);
+  if (!now || !was || now[FIELD.lifeSubs] == null || was[FIELD.lifeSubs] == null) return null;
+  const joined = Math.max(0, now[FIELD.lifeSubs] - was[FIELD.lifeSubs]);
+  const net = now[FIELD.subs] - was[FIELD.subs];
+  return { joined, net, lost: Math.max(0, joined - net) };
+}
+
+function churnWindow() {
+  let joined = 0, lost = 0, any = false;
+  for (const id of scopeIds()) {
+    const c = churnOf(id);
+    if (!c) continue;
+    joined += c.joined; lost += c.lost; any = true;
+  }
+  return any ? { joined, lost } : null;
+}
+
 // x is age at the sample, not wall-clock, so launches line up on day zero.
 function sinceLaunch(id) {
   const created = data.mods?.[id]?.created;
@@ -675,6 +794,34 @@ function sinceLaunch(id) {
 // only "Updated": that stamp moves on any edit, so a description tweak is
 // indistinguishable from a code release and the label mustn't imply otherwise.
 const eventsFor = (id) => data?.events?.[id] ?? [];
+
+// Subscribers at the last sample on or before t.
+function subsAt(rows, t) {
+  let v = null;
+  for (const r of rows) { if (r[0] <= t) v = r[FIELD.subs]; else break; }
+  return v;
+}
+
+// What an edit was followed by: the subscribers gained in the span after it
+// against the same span before. The span shrinks for a recent edit so the two
+// sides stay equal — an hour of "after" compared against two days of "before"
+// would read as a collapse every time.
+// This is an observation, never a cause: `time_updated` moves on any edit, and
+// nothing here separates the edit from whatever else happened that day.
+const IMPACT_H = 48;
+
+function impact(id, t) {
+  const rows = rowsLive(id);
+  if (rows.length < 2) return null;
+  const span = Math.min(IMPACT_H * 3600, rows.at(-1)[0] - t);
+  // Most seeded events predate the first sample, so the two silent cases are the
+  // common ones — they say why rather than looking like a broken measurement.
+  if (span < 3600) return { note: "too recent to measure" };
+  if (t - span < rows[0][0]) return { note: "nothing recorded before this edit" };
+  const a = subsAt(rows, t - span), b = subsAt(rows, t), c = subsAt(rows, t + span);
+  if (a == null || b == null || c == null) return null;
+  return { before: b - a, after: c - b, span };
+}
 
 function ratingOf(row) {
   if (!row || row[FIELD.up] == null) return null;
@@ -721,6 +868,7 @@ const SORTS = {
     const now = latest(id), was = baseline(id);
     return now && was ? now[FIELD.subs] - was[FIELD.subs] : null;
   } },
+  left:   { label: "Unsubscribed", dir: "desc", value: (id) => churnOf(id)?.lost ?? null },
   keep:   { label: "Keep-rate",   dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.lifeSubs) },
   conv:   { label: "Conversion",  dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.views) },
   favs:   { label: "Favourites",  dir: "desc", value: (id) => latest(id)?.[FIELD.favs] ?? null },
@@ -741,6 +889,7 @@ let sort = readSort();
 // re-sorting bands would move every layer below a mover and show motion that
 // isn't growth.
 function sortedIds() {
+  if (focused()) return [focused()];
   const spec = SORTS[sort.metric] ?? SORTS.subs;
   const sign = sort.dir === "asc" ? 1 : -1;
   const idx = new Map(data.order.map((id, i) => [id, i]));
@@ -803,7 +952,18 @@ function rugMarks(marks, height) {
     </g>`).join("");
 }
 
-const rugLabel = (t, name) => `Updated${name ? ` · ${name}` : ""} · ${absTime(t)}`;
+// Second line only once both sides of the comparison exist — an edit with no
+// recorded history behind it gets the stamp alone rather than a measurement
+// standing on one sample.
+function rugLabel(t, name, id) {
+  const head = `Updated${name ? ` · ${name}` : ""} · ${absTime(t)}`;
+  const im = id ? impact(id, t) : null;
+  if (!im) return head;
+  if (im.note) return `${head}\n${im.note}`;
+  const sign = (n) => `${n >= 0 ? "+" : "−"}${fmt(Math.abs(n))}`;
+  const w = ageLabel(im.span);
+  return `${head}\n${sign(im.after)} in the ${w} after · ${sign(im.before)} in the ${w} before`;
+}
 
 // The crosshair, marker and tooltip, shared by the card sparklines and every
 // hero mode. hits are {x, y, ...}; format turns one into tooltip HTML.
@@ -909,7 +1069,7 @@ function sparkline(host, points, colorVar, opts = {}) {
       <circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="4"
               fill="${c}" stroke="var(--surface)" stroke-width="2"/>
       ${rugMarks((opts.rug ?? []).filter((t) => t >= t0 && t <= t1)
-        .map((t) => ({ x: X(t), color: c, label: rugLabel(t) })), height)}
+        .map((t) => ({ x: X(t), color: c, label: rugLabel(t, null, opts.id) })), height)}
       <text class="spark-note" x="${width - 2}" y="${height - 1}" text-anchor="end">${fmt(lo)} → ${fmt(hi)}</text>
     </svg>`;
 
@@ -943,7 +1103,7 @@ function sparkbars(host, buckets, colorVar, sec, opts = {}) {
   const rug = (opts.rug ?? [])
     .map((t) => [t, idx.get(Math.floor(t / sec) * sec)])
     .filter(([, i]) => i !== undefined)
-    .map(([t, i]) => ({ x: PAD.x + (i + 0.5) * slot, color: c, label: rugLabel(t) }));
+    .map(([t, i]) => ({ x: PAD.x + (i + 0.5) * slot, color: c, label: rugLabel(t, null, opts.id) }));
 
   const bars = buckets.map(([b, gain, partial], i) => {
     const cx = PAD.x + (i + 0.5) * slot;
@@ -972,6 +1132,66 @@ function sparkbars(host, buckets, colorVar, sec, opts = {}) {
     { dot: false });
 }
 
+// Joins up, departures down, off a shared zero. Departures are drawn in the
+// mod's own colour at a lower opacity rather than in the loss red: red here
+// would read as a warning, and a healthy mod sheds subscribers every day.
+function sparkflow(host, buckets, colorVar, sec, opts = {}) {
+  const height = opts.height ?? 62;
+  const width = host.clientWidth;
+
+  if (!buckets.length || width < 40) {
+    host.innerHTML = `<div class="spark-empty">${
+      width < 40 ? "" : "Collecting history — joins and departures need a full window"
+    }</div>`;
+    return;
+  }
+
+  const hi = Math.max(1, ...buckets.map((b) => b[1]));
+  const lo = -Math.max(0, ...buckets.map((b) => b[2]));
+  const Y = scaleY(lo, hi, height, false);
+  const slot = (width - 2 * PAD.x) / buckets.length;
+  const bw = Math.max(1.5, slot * 0.72);
+  const c = `var(${colorVar})`;
+  const zero = Y(0);
+
+  const idx = new Map(buckets.map(([b], i) => [b, i]));
+  const rug = (opts.rug ?? [])
+    .map((t) => [t, idx.get(Math.floor(t / sec) * sec)])
+    .filter(([, i]) => i !== undefined)
+    .map(([t, i]) => ({ x: PAD.x + (i + 0.5) * slot, color: c, label: rugLabel(t, null, opts.id) }));
+
+  const bar = (cx, y0, y1, o, partial) =>
+    `<rect x="${(cx - bw / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}"
+           width="${bw.toFixed(1)}" height="${Math.max(1, Math.abs(y1 - y0)).toFixed(1)}"
+           rx="1" fill="${c}" fill-opacity="${partial ? o * 0.4 : o}"/>`;
+
+  const bars = buckets.map(([b, joined, lost, partial], i) => {
+    const cx = PAD.x + (i + 0.5) * slot;
+    return bar(cx, zero, Y(joined), 0.85, partial) + (lost ? bar(cx, zero, Y(-lost), 0.4, partial) : "");
+  }).join("");
+
+  const totJoined = buckets.reduce((a, b) => a + b[1], 0);
+  const totLost = buckets.reduce((a, b) => a + b[2], 0);
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="${opts.label ?? "Churn"}: ${fmt(totJoined)} subscribed, ${fmt(totLost)} left, per ${
+           sec >= 86400 ? "day" : `${sec / 3600} hours`}">
+      <line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
+      ${bars}
+      ${rugMarks(rug, height)}
+      <text class="spark-note" x="${width - 2}" y="${height - 1}" text-anchor="end">+${fmt(totJoined)} · −${fmt(totLost)}</text>
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"),
+    buckets.map(([b, joined, lost, partial], i) => ({
+      x: PAD.x + (i + 0.5) * slot, y: Y(joined), color: c, b, joined, lost, partial,
+    })),
+    (h) => `<b>+${fmt(h.joined)}</b> subscribed · <b>−${fmt(h.lost)}</b> left${
+      h.partial ? " so far" : ""}<span class="tip-t">${bucketLabel(h.b, sec)}</span>`,
+    { dot: false });
+}
+
 /* ---------- hero chart ---------- */
 
 // Publish order — never `slot`, which is only the order mods.json was edited in
@@ -981,7 +1201,7 @@ const createdOrder = () =>
   [...data.order].filter((id) => data.mods?.[id]).sort(
     (a, b) => (data.mods[a].created ?? 0) - (data.mods[b].created ?? 0));
 
-const heroIds = () => createdOrder().filter((id) => !hiddenIds.has(id));
+const heroIds = () => (focused() ? [focused()] : createdOrder().filter((id) => !hiddenIds.has(id)));
 
 const colorOf = (id) => `var(${SLOT_VAR[data.mods?.[id]?.slot] ?? "--s1"})`;
 const shortOf = (id) => data.mods?.[id]?.short ?? id;
@@ -995,7 +1215,7 @@ function timeRug(ids, inRange, at) {
   for (const id of ids) {
     for (const t of eventsFor(id)) {
       if (!inRange(t, id)) continue;
-      out.push({ x: at(t, id), color: colorOf(id), label: rugLabel(t, shortOf(id)) });
+      out.push({ x: at(t, id), color: colorOf(id), label: rugLabel(t, shortOf(id), id) });
     }
   }
   return out;
@@ -1010,7 +1230,7 @@ function bucketRug(ids, buckets, sec, at) {
     for (const t of eventsFor(id)) {
       const i = idx.get(Math.floor(t / sec) * sec);
       if (i === undefined) continue;
-      out.push({ x: at(i), color: colorOf(id), label: rugLabel(t, shortOf(id)) });
+      out.push({ x: at(i), color: colorOf(id), label: rugLabel(t, shortOf(id), id) });
     }
   }
   return out;
@@ -1051,12 +1271,14 @@ function renderHeroChart() {
 
   if (mode === "stacked") drawStacked(host, width, height, ids, cutoff);
   else if (mode === "velocity") drawVelocity(host, width, height, ids, cutoff, nowSec);
+  else if (mode === "churn") drawChurn(host, width, height, ids, cutoff, nowSec);
   else if (mode === "launch") drawLaunch(host, width, height, ids);
   else drawTotal(host, width, height, cutoff);
 }
 
 function drawTotal(host, width, height, cutoff) {
-  const agg = totalSeries();
+  const scope = scopeIds();
+  const agg = totalSeries(scope);
   let pts = agg.filter((p) => p[0] >= cutoff);
   if (pts.length < 2) pts = agg;
   if (pts.length < 2) {
@@ -1070,16 +1292,17 @@ function drawTotal(host, width, height, cutoff) {
   const xy = pts.map((p) => [X(p[0]), Y(p[1])]);
   const line = path(xy);
   const area = `${line} L${xy.at(-1)[0].toFixed(1)} ${height - PAD.bottom} L${xy[0][0].toFixed(1)} ${height - PAD.bottom} Z`;
-  const c = "var(--s1)";
+  const c = focused() ? colorOf(focused()) : "var(--s1)";
+  const who = focused() ? `${shortOf(focused())} subscribers` : "Total subscribers";
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="Total subscribers ${chartWindowLabel()}: ${fmt(pts[0][1])} to ${fmt(pts.at(-1)[1])}${heroLog ? ", logarithmic scale" : ""}">
+         aria-label="${who} ${chartWindowLabel()}: ${fmt(pts[0][1])} to ${fmt(pts.at(-1)[1])}${heroLog ? ", logarithmic scale" : ""}">
       <path d="${area}" fill="${c}" fill-opacity="0.10"/>
       <path d="${line}" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="${xy.at(-1)[0].toFixed(1)}" cy="${xy.at(-1)[1].toFixed(1)}" r="4"
               fill="${c}" stroke="var(--surface)" stroke-width="2"/>
-      ${rugMarks(timeRug(data.order, (t) => t >= t0 && t <= t1, X), height)}
+      ${rugMarks(timeRug(scope, (t) => t >= t0 && t <= t1, X), height)}
     </svg>`;
 
   attachProbe(host, host.querySelector("svg"),
@@ -1220,6 +1443,102 @@ function drawVelocity(host, width, height, ids, cutoff, nowSec) {
   axisEnds(axisTime(buckets[0]), "now");
 }
 
+// Velocity answers "how fast"; this answers "out of how many". A bucket whose
+// join bar is tall and whose net line sits low is a mod being found and dropped
+// in the same day — motion the net curve alone hides completely.
+function drawChurn(host, width, height, ids, cutoff, nowSec) {
+  const sec = bucketSec(rangeHours);
+  const earliest = Math.min(...ids.map((id) => rowsLive(id)[0]?.[0] ?? Infinity));
+  const from = rangeHours === 0 ? (Number.isFinite(earliest) ? earliest : nowSec) : cutoff;
+
+  const joins = {}, losses = {};
+  const partial = new Set(), starts = new Set();
+  for (const id of ids) {
+    const j = new Map(), l = new Map();
+    for (const [b, joined, lost, p] of flow(id, from, nowSec, sec)) {
+      j.set(b, joined); l.set(b, lost);
+      starts.add(b);
+      if (p) partial.add(b);
+    }
+    joins[id] = j; losses[id] = l;
+  }
+  const buckets = [...starts].sort((a, b) => a - b);
+  if (!buckets.length) {
+    emptyChart(host, height, "Collecting history — joins and departures need a full window");
+    return;
+  }
+
+  let hi = 0, lo = 0;
+  const totals = new Map();
+  for (const b of buckets) {
+    let up = 0, down = 0;
+    for (const id of ids) { up += joins[id].get(b) ?? 0; down += losses[id].get(b) ?? 0; }
+    totals.set(b, { up, down });
+    hi = Math.max(hi, up); lo = Math.min(lo, -down);
+  }
+
+  const Y = scaleY(lo, hi === lo ? hi + 1 : hi, height, false);
+  const zero = Y(0);
+  const slot = (width - 2 * PAD.x) / buckets.length;
+  const bw = Math.max(1.5, slot * 0.72);
+
+  let body = "";
+  const hits = [], netPts = [];
+  buckets.forEach((b, i) => {
+    const cx = PAD.x + (i + 0.5) * slot;
+    let up = 0, down = 0, segs = "";
+    // Joins stack up and departures stack down in the same publish order, so a
+    // mod keeps its band position on both sides of the axis.
+    for (const id of ids) {
+      const g = joins[id].get(b) ?? 0;
+      if (!g) continue;
+      const y0 = Y(up); up += g;
+      segs += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${Y(up).toFixed(1)}"
+                     width="${bw.toFixed(1)}" height="${Math.max(1, y0 - Y(up)).toFixed(1)}"
+                     fill="${colorOf(id)}"/>`;
+    }
+    for (const id of ids) {
+      const g = losses[id].get(b) ?? 0;
+      if (!g) continue;
+      const y0 = Y(-down); down += g;
+      segs += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${y0.toFixed(1)}"
+                     width="${bw.toFixed(1)}" height="${Math.max(1, Y(-down) - y0).toFixed(1)}"
+                     fill="${colorOf(id)}" fill-opacity="0.4"/>`;
+    }
+    if (!segs) {
+      segs = `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(zero - 1).toFixed(1)}"
+                    width="${bw.toFixed(1)}" height="1" fill="var(--grid)"/>`;
+    }
+    body += `<g opacity="${partial.has(b) ? 0.35 : 0.9}">${segs}</g>`;
+    netPts.push([cx, Y(up - down)]);
+    hits.push({ x: cx, y: Y(up), b, up, down, partial: partial.has(b) });
+  });
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="Subscribers joining against subscribers leaving per ${
+           sec >= 86400 ? "day" : `${sec / 3600} hours`}, ${chartWindowLabel()}. Peak ${fmt(hi)} joined.">
+      <line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
+      ${body}
+      ${netPts.length > 1 ? `<path d="${path(netPts)}" fill="none" stroke="var(--ink-2)" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>` : ""}
+      ${rugMarks(bucketRug(ids, buckets, sec, (i) => PAD.x + (i + 0.5) * slot), height)}
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"), hits,
+    (h) => {
+      const net = h.up - h.down;
+      return `<b>${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</b> net${h.partial ? " so far" : ""}` +
+        `<span class="tip-t">${bucketLabel(h.b, sec)}</span>` +
+        `<div class="tip-rule"></div>` +
+        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2)"></span>Subscribed<span>+${fmt(h.up)}</span></div>` +
+        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2);opacity:0.4"></span>Left<span>−${fmt(h.down)}</span></div>`;
+    },
+    { dot: false });
+
+  axisEnds(axisTime(buckets[0]), "now");
+}
+
 function drawLaunch(host, width, height, ids) {
   const maxAge = rangeHours === 0 ? Infinity : rangeHours * 3600;
   const series = ids
@@ -1271,32 +1590,77 @@ function drawLaunch(host, width, height, ids) {
   axisEnds("published", ageLabel(x1));
 }
 
+// Two jobs on one control. Unfocused it toggles a mod in or out of the chart;
+// focused it switches which mod the page is about, which saves going back to
+// the grid between every comparison.
 function renderLegend() {
   const el = document.getElementById("hero-legend");
-  if (effMode() === "total") { el.innerHTML = ""; return; }
+  const f = focused();
+  if (!f && effMode() === "total") { el.innerHTML = ""; return; }
   el.innerHTML = createdOrder().map((id) => `
-    <button type="button" class="leg" data-id="${id}" aria-pressed="${!hiddenIds.has(id)}">
+    <button type="button" class="leg" data-id="${id}"
+            aria-pressed="${f ? id === f : !hiddenIds.has(id)}"
+            title="${f ? `Focus ${shortOf(id)}` : `Show or hide ${shortOf(id)}`}">
       <span class="swatch" style="background:${colorOf(id)}"></span>${shortOf(id)}
     </button>`).join("");
+}
+
+// Every recorded edit with what followed it. The rug tooltips carry the same
+// measurement two lines at a time; this is the version with room.
+function renderLog(id) {
+  const evs = [...eventsFor(id)].sort((a, b) => b - a);
+  if (!evs.length) {
+    return `<div class="log-row"><span class="log-when">No edits recorded yet</span></div>`;
+  }
+  return evs.map((t) => {
+    const im = impact(id, t);
+    let right;
+    if (!im) right = `<span class="log-note">not enough history</span>`;
+    else if (im.note) right = `<span class="log-note">${im.note}</span>`;
+    else {
+      const w = ageLabel(im.span);
+      right = `<span class="log-impact">
+        <span class="delta" data-dir="${im.after > 0 ? "up" : im.after < 0 ? "down" : "flat"}">${
+          im.after === 0 ? "No change" : `${im.after > 0 ? "↑" : "↓"} ${fmt(Math.abs(im.after))}`} in the ${w} after</span>
+        <span class="log-vs">against ${im.before >= 0 ? "+" : "−"}${fmt(Math.abs(im.before))} in the ${w} before</span>
+      </span>`;
+    }
+    return `<div class="log-row"><span class="log-when">${absTime(t)}</span>${right}</div>`;
+  }).join("");
 }
 
 /* ---------- render ---------- */
 
 function syncControls() {
   const mode = effMode();
+  const f = focused();
+
+  const crumb = document.getElementById("crumb");
+  crumb.hidden = !f;
+  if (f) document.getElementById("crumb-cur").textContent = shortOf(f);
+
+  document.getElementById("hero-label").innerHTML = f
+    ? `<span class="swatch" style="background:${colorOf(f)};display:inline-block;margin-right:6px"></span>${shortOf(f)} · subscribers`
+    : "Total subscribers";
+  document.getElementById("hero").setAttribute("aria-label",
+    f ? `${shortOf(f)} subscribers` : "Total subscribers");
+
+  document.getElementById("cards-head").textContent = f ? "Updates" : "By mod";
+  document.getElementById("sort-group").hidden = !!f;
 
   document.querySelectorAll("#range button").forEach((b) => {
     b.setAttribute("aria-pressed", String(Number(b.dataset.hours) === rangeHours));
   });
   document.querySelectorAll("#mode button").forEach((b) => {
-    b.hidden = b.dataset.mode === "velocity" && !velocityOk();
+    b.hidden = (bucketed(b.dataset.mode) && !velocityOk())
+      || (b.dataset.mode === "stacked" && !!f);
     b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
   });
 
   const log = document.getElementById("hero-log");
   // Hidden rather than disabled in the additive modes: a log stack is
   // meaningless, and no control beats a wrong-but-plausible one.
-  log.hidden = mode === "stacked" || mode === "velocity";
+  log.hidden = mode === "stacked" || bucketed(mode);
   log.setAttribute("aria-pressed", String(heroLog));
 
   // Carries what the row used to say in visible text: the same buttons read as a
@@ -1335,7 +1699,7 @@ function render() {
   setDelta(document.getElementById("kpi-views-d"), totalDelta(FIELD.views), windowLabel());
 
   let up = 0, down = 0, haveVotes = false;
-  for (const id of data.order) {
+  for (const id of scopeIds()) {
     const r = ratingOf(latest(id));
     if (r) { up += r.up; down += r.down; haveVotes = true; }
   }
@@ -1349,6 +1713,20 @@ function render() {
     ratingEl.textContent = "—";
     ratingD.dataset.dir = "flat";
     ratingD.textContent = haveVotes ? "No votes yet" : "Needs a Steam API key";
+  }
+
+  const churn = churnWindow();
+  const lostEl = document.getElementById("kpi-lost");
+  const lostD = document.getElementById("kpi-lost-d");
+  lostD.dataset.dir = "flat";
+  if (!churn) {
+    lostEl.textContent = "—";
+    lostD.textContent = "Needs two samples";
+  } else {
+    lostEl.textContent = fmt(churn.lost);
+    lostD.textContent = churn.joined
+      ? `${pct(churn.lost / churn.joined)} of ${fmt(churn.joined)} who subscribed ${windowLabel()}`
+      : `Nobody subscribed ${windowLabel()}`;
   }
 
   renderCards();
@@ -1384,6 +1762,18 @@ function renderCards() {
   const calKeep = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.lifeSubs)));
   const calConv = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.views)));
 
+  const f = focused();
+  cards.classList.toggle("focus-view", !!f);
+  if (f) {
+    cards.innerHTML = `
+      <div class="focus-pills">
+        ${calPill("Keep", ratio(f, FIELD.subs, FIELD.lifeSubs), calKeep, "Subscribers still holding, out of everyone who ever subscribed")}
+        ${calPill("Conv", ratio(f, FIELD.subs, FIELD.views), calConv, "Subscribers per page view")}
+      </div>
+      <div class="log">${renderLog(f)}</div>`;
+    return;
+  }
+
   for (const id of sortedIds()) {
     const mod = data.mods[id];
     const row = latest(id);
@@ -1397,10 +1787,13 @@ function renderCards() {
 
     const el = document.createElement("article");
     el.className = "card";
+    el.dataset.id = id;
     el.innerHTML = `
       <div class="card-head">
         <span class="swatch" style="background:var(${colorVar})"></span>
         <a href="${mod.url}" target="_blank" rel="noopener">${mod.short}</a>
+        <button type="button" class="card-focus" data-focus="${id}"
+                aria-label="Open ${mod.short} on its own" title="Open ${mod.short} on its own">›</button>
       </div>
       <div class="card-value-row">
         <span class="card-value">${fmt(row[FIELD.subs])}</span>
@@ -1426,14 +1819,18 @@ function renderCards() {
 
     const host = el.querySelector(".spark");
     const rug = eventsFor(id);
-    if (effMode() === "velocity") {
+    const mode = effMode();
+    if (mode === "velocity" || mode === "churn") {
       const rows = rowsLive(id);
       const from = rangeHours === 0 ? (rows[0]?.[0] ?? nowSec) : cutoff;
-      pending.push([host, () => sparkbars(host, velocity(id, from, nowSec, sec), colorVar, sec, { label: mod.short, rug })]);
+      const opts = { label: mod.short, rug, id };
+      pending.push([host, mode === "churn"
+        ? () => sparkflow(host, flow(id, from, nowSec, sec), colorVar, sec, opts)
+        : () => sparkbars(host, velocity(id, from, nowSec, sec), colorVar, sec, opts)]);
     } else {
       const all = rowsLive(id).map((p) => [p[0], p[FIELD.subs]]);
       const pts = all.filter((p) => p[0] >= cutoff);
-      pending.push([host, () => sparkline(host, pts.length >= 2 ? pts : all, colorVar, { label: mod.short, rug })]);
+      pending.push([host, () => sparkline(host, pts.length >= 2 ? pts : all, colorVar, { label: mod.short, rug, id })]);
     }
   }
 
@@ -1444,6 +1841,7 @@ function renderTable() {
   const tbody = document.querySelector("#table tbody");
   const tfoot = document.querySelector("#table tfoot");
   document.getElementById("th-change").textContent = `Change ${windowLabel()}`;
+  document.getElementById("th-left").textContent = `Left ${windowLabel()}`;
   tbody.innerHTML = "";
 
   for (const id of sortedIds()) {
@@ -1451,11 +1849,13 @@ function renderTable() {
     if (!mod || !row) continue;
     const d = was ? row[FIELD.subs] - was[FIELD.subs] : null;
     const r = ratingOf(row);
+    const c = churnOf(id);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><span class="name-cell"><span class="swatch" style="background:var(${SLOT_VAR[mod.slot] ?? "--s1"})"></span>${mod.short}</span></td>
       <td>${nf.format(row[FIELD.subs])}</td>
       <td>${d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "−") + nf.format(Math.abs(d))}</td>
+      <td>${c == null ? "—" : c.lost === 0 ? "0" : "−" + nf.format(c.lost)}</td>
       <td>${nf.format(row[FIELD.favs])}</td>
       <td>${nf.format(row[FIELD.views])}</td>
       <td>${r && r.total ? Math.round(r.pct * 100) + "%" : "—"}</td>
@@ -1466,7 +1866,11 @@ function renderTable() {
     tbody.appendChild(tr);
   }
 
+  // A totals row under a single row is just that row again.
+  if (focused()) { tfoot.innerHTML = ""; return; }
+
   const dSubs = totalDelta(FIELD.subs);
+  const churn = churnWindow();
   const subs = totalNow(FIELD.subs);
   const lifeSubs = totalNow(FIELD.lifeSubs);
   const views = totalNow(FIELD.views);
@@ -1474,6 +1878,7 @@ function renderTable() {
     <td>Total</td>
     <td>${fmt(subs)}</td>
     <td>${dSubs == null ? "—" : dSubs === 0 ? "0" : (dSubs > 0 ? "+" : "−") + nf.format(Math.abs(dSubs))}</td>
+    <td>${churn == null ? "—" : churn.lost === 0 ? "0" : "−" + nf.format(churn.lost)}</td>
     <td>${fmt(totalNow(FIELD.favs))}</td>
     <td>${fmt(views)}</td>
     <td></td><td></td>
@@ -1582,10 +1987,25 @@ document.getElementById("hero-legend").addEventListener("click", (e) => {
   const btn = e.target.closest(".leg");
   if (!btn) return;
   const id = btn.dataset.id;
+  if (focused()) { setFocus(id); return; }
   if (hiddenIds.has(id)) hiddenIds.delete(id); else hiddenIds.add(id);
   renderHeroChart();
   renderLegend();
 });
+
+// The whole card is a target for the mouse; the chevron is the one AT and the
+// keyboard can reach, and the Steam link keeps its own job.
+document.getElementById("cards").addEventListener("click", (e) => {
+  if (e.target.closest("a")) return;
+  const card = e.target.closest(".card[data-id]");
+  if (card) setFocus(card.dataset.id);
+});
+
+document.getElementById("crumb-back").addEventListener("click", () => setFocus(null));
+
+// Covers the back button and a pasted link, neither of which goes through
+// setFocus.
+addEventListener("hashchange", () => { focusId = readFocus(); render(); });
 
 const sortSelect = document.getElementById("sort");
 sortSelect.innerHTML = Object.entries(SORTS)
