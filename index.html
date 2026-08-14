@@ -127,7 +127,7 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 20px; flex-wrap: wrap;
 }
-.filters .label { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.section-head .label { font-size: 13px; color: var(--muted); margin-right: 2px; }
 .seg { display: flex; gap: 4px; }
 .sort-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .sort-group select {
@@ -191,6 +191,11 @@ h2.section {
   font-size: 12px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.07em; color: var(--muted); margin: 0 0 12px;
 }
+.section-head {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-bottom: 12px;
+}
+.section-head h2.section { margin: 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 .card {
   background: var(--surface); border: 1px solid var(--border);
@@ -235,8 +240,31 @@ h2.section {
 .foot div { font-size: 12.5px; color: var(--ink-2); }
 .foot b { display: block; font-size: 16px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; }
 .foot .hint { color: var(--muted); font-weight: 400; font-size: 12px; }
-.foot2 { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; font-size: 12px; color: var(--muted); }
-.foot2 b { font-weight: 600; color: var(--ink-2); }
+.foot2 { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; font-size: 12px; }
+/* The tint is a field, never the figure itself: the delta above owns coloured
+   text, and tinting these numbers the same way would read as a second change
+   reading. Hue lands on the border, the wash and the marker glyph only. */
+.pill {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: var(--muted);
+}
+.pill b { font-weight: 600; color: var(--ink-2); }
+.pill[data-cal="high"] {
+  border-color: color-mix(in srgb, var(--up) 34%, transparent);
+  background: color-mix(in srgb, var(--up) 8%, transparent);
+}
+.pill[data-cal="low"] {
+  border-color: color-mix(in srgb, var(--down) 34%, transparent);
+  background: color-mix(in srgb, var(--down) 8%, transparent);
+}
+/* Triangles, where the delta uses arrows — the two must not be mistaken for
+   each other at a glance. */
+.pill .cal { font-size: 10px; }
+.pill[data-cal="high"] .cal { color: var(--up); }
+.pill[data-cal="low"] .cal { color: var(--down); }
 
 /* ---- Table view (the WCAG-clean twin) ---- */
 details.table-view { margin-top: 28px; }
@@ -304,17 +332,13 @@ footer.page a { color: var(--ink-2); }
   <div id="error-slot"></div>
 
   <div class="filters">
-    <span class="label" id="range-label">Compare against</span>
     <div class="seg" id="range" role="group" aria-label="Comparison window">
-      <button type="button" data-days="1">24h</button>
-      <button type="button" data-days="7" aria-pressed="true">7d</button>
-      <button type="button" data-days="30">30d</button>
-      <button type="button" data-days="0">All</button>
-    </div>
-    <div class="sort-group">
-      <label class="label" for="sort">Sort by</label>
-      <select id="sort"></select>
-      <button type="button" id="sortdir" title="Reverse sort direction">↓</button>
+      <button type="button" data-hours="3">3h</button>
+      <button type="button" data-hours="6">6h</button>
+      <button type="button" data-hours="24">24h</button>
+      <button type="button" data-hours="168" aria-pressed="true">7d</button>
+      <button type="button" data-hours="720">30d</button>
+      <button type="button" data-hours="0">All</button>
     </div>
   </div>
 
@@ -349,7 +373,14 @@ footer.page a { color: var(--ink-2); }
     <div class="kpi"><div class="k-label">Rating</div><div class="k-value" id="kpi-rating">—</div><span class="delta" id="kpi-rating-d" data-dir="flat">—</span></div>
   </div>
 
-  <h2 class="section">By mod</h2>
+  <div class="section-head">
+    <h2 class="section">By mod</h2>
+    <div class="sort-group">
+      <label class="label" for="sort">Sort by</label>
+      <select id="sort"></select>
+      <button type="button" id="sortdir" title="Reverse sort direction">↓</button>
+    </div>
+  </div>
   <div class="cards" id="cards"></div>
 
   <details class="table-view">
@@ -399,11 +430,35 @@ function dataUrl() {
 }
 
 let data = null;
-let rangeDays = Number(localStorage.getItem("rangeDays") ?? 7);
+
+// Zero is "all history". Anything below 24 leans on the poller's real cadence —
+// see velocityOk().
+const RANGES = [3, 6, 24, 168, 720, 0];
+
+// Builds before the sub-day windows stored this as whole days under `rangeDays`;
+// a returning reader keeps the window they picked instead of silently landing on
+// the default. Both keys are read defensively because `Number(null)` is 0, which
+// is itself a valid range.
+function readRange() {
+  const stored = localStorage.getItem("rangeHours");
+  if (stored !== null && RANGES.includes(Number(stored))) return Number(stored);
+  const legacy = localStorage.getItem("rangeDays");
+  if (legacy !== null && RANGES.includes(Number(legacy) * 24)) return Number(legacy) * 24;
+  return 168;
+}
+let rangeHours = readRange();
 
 const MODES = ["total", "stacked", "velocity", "launch"];
 let heroMode = MODES.includes(localStorage.getItem("heroMode")) ? localStorage.getItem("heroMode") : "total";
 let heroLog = localStorage.getItem("heroLog") === "1";
+
+// A velocity bar is only honest if several samples fall inside it, and the poller
+// records a row roughly once an hour — it writes one only when a number moves,
+// with a 6h heartbeat behind that. Under a day there aren't enough samples to
+// fill the bars, so the mode steps aside. `heroMode` itself is left alone:
+// widening the range brings the chart straight back.
+const velocityOk = () => rangeHours === 0 || rangeHours >= 24;
+const effMode = () => (heroMode === "velocity" && !velocityOk() ? "total" : heroMode);
 // Hero-only, in memory only: which mod is on screen isn't worth restoring a
 // week later, and a persisted hide would look like missing data.
 const hiddenIds = new Set();
@@ -455,7 +510,7 @@ function absTime(sec) {
 // Axis ends carry only as much precision as the window needs.
 function axisTime(sec) {
   const d = new Date(sec * 1000);
-  return rangeDays === 1
+  return rangeHours !== 0 && rangeHours <= 24
     ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
@@ -478,14 +533,18 @@ function bucketLabel(b, sec) {
 }
 
 const windowLabel = () =>
-  rangeDays === 0 ? "since tracking began" : rangeDays === 1 ? "in 24h" : `in ${rangeDays}d`;
+  rangeHours === 0 ? "since tracking began"
+    : rangeHours <= 24 ? `in ${rangeHours}h`
+    : `in ${rangeHours / 24}d`;
 
-// Since launch re-reads the range buttons as a zoom on each mod's first days,
+// Since launch re-reads the range buttons as a zoom on each mod's first hours,
 // so anything describing the chart's own window needs the other wording.
 const launchLabel = () =>
-  rangeDays === 0 ? "their whole life so far" : rangeDays === 1 ? "first 24h" : `first ${rangeDays} days`;
+  rangeHours === 0 ? "their whole life so far"
+    : rangeHours <= 24 ? `first ${rangeHours}h`
+    : `first ${rangeHours / 24} days`;
 
-const chartWindowLabel = () => (heroMode === "launch" ? launchLabel() : windowLabel());
+const chartWindowLabel = () => (effMode() === "launch" ? launchLabel() : windowLabel());
 
 // Direction is carried by an arrow glyph as well as colour — never colour alone.
 function setDelta(el, diff, suffix = "") {
@@ -521,8 +580,8 @@ const latest = (id) => live[id] ?? rowsFor(id).at(-1) ?? null;
 function baseline(id) {
   const rows = rowsFor(id);
   if (rows.length < 2) return null;
-  if (rangeDays === 0) return rows[0];
-  const cutoff = Date.now() / 1000 - rangeDays * 86400;
+  if (rangeHours === 0) return rows[0];
+  const cutoff = Date.now() / 1000 - rangeHours * 3600;
   let pick = null;
   for (const r of rows) { if (r[0] <= cutoff) pick = r; else break; }
   return pick ?? rows[0];
@@ -579,8 +638,9 @@ function totalSeries() {
   return stamps.map((t, i) => [t, total[i]]);
 }
 
-// ~24-30 bars per window, so velocity is never a comb or four blocks.
-const bucketSec = (days) => (days === 1 ? 3600 : days === 7 ? 21600 : 86400);
+// ~24-30 bars per window, so velocity is never a comb or four blocks. Sub-day
+// windows never reach here — velocityOk() gates the mode out first.
+const bucketSec = (hours) => (hours === 24 ? 3600 : hours === 168 ? 21600 : 86400);
 
 // Gains per bucket: the last value in the bucket minus the last value at or
 // before its start. A bucket with no prior sample — the mod's history starts
@@ -628,11 +688,36 @@ function ratio(id, num, den) {
   return row[num] / row[den];
 }
 
+/* ---------- self-calibrating bands ---------- */
+
+// Keep-rate and conversion have no external benchmark — what counts as healthy
+// depends on the mod's niche, its age, and how its page is reached — so a pill is
+// banded against this set's own spread rather than a threshold invented here.
+// Below four mods, or a set that agrees to within half a point, nothing is banded
+// at all: too little to say anything with.
+const CAL_MIN = 4;
+
+function calibrate(values) {
+  const v = values.filter((x) => x != null);
+  if (v.length < CAL_MIN) return null;
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length);
+  return sd > 0.005 ? { mean, sd, n: v.length } : null;
+}
+
+const calBand = (cal, x) =>
+  !cal || x == null ? ""
+    : x >= cal.mean + cal.sd ? "high"
+    : x <= cal.mean - cal.sd ? "low"
+    : "";
+
 /* ---------- sorting ---------- */
 
 const SORTS = {
   subs:   { label: "Subscribers", dir: "desc", value: (id) => latest(id)?.[FIELD.subs] ?? null },
-  movers: { label: "Movers",      dir: "desc", value: (id) => {
+  // Key stays `movers`: it is the stored sort preference and the table header's
+  // data-metric, neither of which the reader ever sees.
+  movers: { label: "Change",      dir: "desc", value: (id) => {
     const now = latest(id), was = baseline(id);
     return now && was ? now[FIELD.subs] - was[FIELD.subs] : null;
   } },
@@ -954,18 +1039,19 @@ function renderHeroChart() {
   document.getElementById("hero-axis").innerHTML = "";
   if (width < 40) { host.innerHTML = ""; return; }
 
+  const mode = effMode();
   const ids = heroIds();
-  if (heroMode !== "total" && !ids.length) {
+  if (mode !== "total" && !ids.length) {
     emptyChart(host, height, "Every mod is hidden — pick one from the legend below");
     return;
   }
 
   const nowSec = Math.max(Date.now() / 1000, ...data.order.map((id) => rowsLive(id).at(-1)?.[0] ?? 0));
-  const cutoff = rangeDays === 0 ? 0 : nowSec - rangeDays * 86400;
+  const cutoff = rangeHours === 0 ? 0 : nowSec - rangeHours * 3600;
 
-  if (heroMode === "stacked") drawStacked(host, width, height, ids, cutoff);
-  else if (heroMode === "velocity") drawVelocity(host, width, height, ids, cutoff, nowSec);
-  else if (heroMode === "launch") drawLaunch(host, width, height, ids);
+  if (mode === "stacked") drawStacked(host, width, height, ids, cutoff);
+  else if (mode === "velocity") drawVelocity(host, width, height, ids, cutoff, nowSec);
+  else if (mode === "launch") drawLaunch(host, width, height, ids);
   else drawTotal(host, width, height, cutoff);
 }
 
@@ -1052,9 +1138,9 @@ function drawStacked(host, width, height, ids, cutoff) {
 }
 
 function drawVelocity(host, width, height, ids, cutoff, nowSec) {
-  const sec = bucketSec(rangeDays);
+  const sec = bucketSec(rangeHours);
   const earliest = Math.min(...ids.map((id) => rowsLive(id)[0]?.[0] ?? Infinity));
-  const from = rangeDays === 0 ? (Number.isFinite(earliest) ? earliest : nowSec) : cutoff;
+  const from = rangeHours === 0 ? (Number.isFinite(earliest) ? earliest : nowSec) : cutoff;
 
   const gains = {};
   const partial = new Set();
@@ -1135,7 +1221,7 @@ function drawVelocity(host, width, height, ids, cutoff, nowSec) {
 }
 
 function drawLaunch(host, width, height, ids) {
-  const maxAge = rangeDays === 0 ? Infinity : rangeDays * 86400;
+  const maxAge = rangeHours === 0 ? Infinity : rangeHours * 3600;
   const series = ids
     .map((id) => ({ id, pts: sinceLaunch(id).filter((p) => p[0] >= 0 && p[0] <= maxAge) }))
     .filter((s) => s.pts.length);
@@ -1187,7 +1273,7 @@ function drawLaunch(host, width, height, ids) {
 
 function renderLegend() {
   const el = document.getElementById("hero-legend");
-  if (heroMode === "total") { el.innerHTML = ""; return; }
+  if (effMode() === "total") { el.innerHTML = ""; return; }
   el.innerHTML = createdOrder().map((id) => `
     <button type="button" class="leg" data-id="${id}" aria-pressed="${!hiddenIds.has(id)}">
       <span class="swatch" style="background:${colorOf(id)}"></span>${shortOf(id)}
@@ -1197,21 +1283,26 @@ function renderLegend() {
 /* ---------- render ---------- */
 
 function syncControls() {
+  const mode = effMode();
+
   document.querySelectorAll("#range button").forEach((b) => {
-    b.setAttribute("aria-pressed", String(Number(b.dataset.days) === rangeDays));
+    b.setAttribute("aria-pressed", String(Number(b.dataset.hours) === rangeHours));
   });
   document.querySelectorAll("#mode button").forEach((b) => {
-    b.setAttribute("aria-pressed", String(b.dataset.mode === heroMode));
+    b.hidden = b.dataset.mode === "velocity" && !velocityOk();
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
   });
 
   const log = document.getElementById("hero-log");
   // Hidden rather than disabled in the additive modes: a log stack is
   // meaningless, and no control beats a wrong-but-plausible one.
-  log.hidden = heroMode === "stacked" || heroMode === "velocity";
+  log.hidden = mode === "stacked" || mode === "velocity";
   log.setAttribute("aria-pressed", String(heroLog));
 
-  document.getElementById("range-label").textContent =
-    heroMode === "launch" ? "First" : "Compare against";
+  // Carries what the row used to say in visible text: the same buttons read as a
+  // zoom on each mod's opening stretch once the chart is measuring from launch.
+  document.getElementById("range").setAttribute("aria-label",
+    mode === "launch" ? "Window from each mod's launch" : "Comparison window");
 
   document.getElementById("sort").value = sort.metric;
   const dir = document.getElementById("sortdir");
@@ -1268,13 +1359,30 @@ function render() {
 // Built in two passes: auto-fit grid tracks only settle once every card is in
 // the DOM, and a sparkline measured before then draws at the full row width and
 // spills into its neighbours.
+// The tooltip is the only place the band explains itself, so it names the
+// comparison outright: a tint that looks like a verdict on the mod, rather than
+// on its standing among the others, would be the wrong reading.
+function calPill(label, value, cal, help) {
+  const band = calBand(cal, value);
+  const note = band
+    ? ` — ${band === "high" ? "above" : "below"} the spread across these ${cal.n} mods (average ${pct(cal.mean)})`
+    : "";
+  return `<span class="pill"${band ? ` data-cal="${band}"` : ""} title="${help}${note}">${
+    label} <b>${pct(value)}</b>${band ? `<span class="cal">${band === "high" ? "▲" : "▼"}</span>` : ""}</span>`;
+}
+
 function renderCards() {
   const cards = document.getElementById("cards");
   const nowSec = Date.now() / 1000;
-  const cutoff = rangeDays === 0 ? 0 : nowSec - rangeDays * 86400;
-  const sec = bucketSec(rangeDays);
+  const cutoff = rangeHours === 0 ? 0 : nowSec - rangeHours * 3600;
+  const sec = bucketSec(rangeHours);
   const pending = [];
   cards.innerHTML = "";
+
+  // Banded against every tracked mod, not just the ones on screen, so the
+  // comparison doesn't shift under a sort or a filter.
+  const calKeep = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.lifeSubs)));
+  const calConv = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.views)));
 
   for (const id of sortedIds()) {
     const mod = data.mods[id];
@@ -1308,8 +1416,8 @@ function renderCards() {
         }</b></div>
       </div>
       <div class="foot2">
-        <span title="Subscribers still holding, out of everyone who ever subscribed">Keep <b>${pct(keep)}</b></span>
-        <span title="Subscribers per page view">Conv <b>${pct(conv)}</b></span>
+        ${calPill("Keep", keep, calKeep, "Subscribers still holding, out of everyone who ever subscribed")}
+        ${calPill("Conv", conv, calConv, "Subscribers per page view")}
       </div>`;
 
     setDelta(el.querySelector(".delta"),
@@ -1318,9 +1426,9 @@ function renderCards() {
 
     const host = el.querySelector(".spark");
     const rug = eventsFor(id);
-    if (heroMode === "velocity") {
+    if (effMode() === "velocity") {
       const rows = rowsLive(id);
-      const from = rangeDays === 0 ? (rows[0]?.[0] ?? nowSec) : cutoff;
+      const from = rangeHours === 0 ? (rows[0]?.[0] ?? nowSec) : cutoff;
       pending.push([host, () => sparkbars(host, velocity(id, from, nowSec, sec), colorVar, sec, { label: mod.short, rug })]);
     } else {
       const all = rowsLive(id).map((p) => [p[0], p[FIELD.subs]]);
@@ -1451,8 +1559,8 @@ async function loadLive() {
 document.getElementById("range").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
-  rangeDays = Number(btn.dataset.days);
-  localStorage.setItem("rangeDays", String(rangeDays));
+  rangeHours = Number(btn.dataset.hours);
+  localStorage.setItem("rangeHours", String(rangeHours));
   render();
 });
 
