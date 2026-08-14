@@ -120,7 +120,7 @@ button {
 }
 button:hover { color: var(--ink); }
 button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color: var(--muted); }
-:is(button, a, summary):focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+:is(button, a, summary, select):focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
 
 /* ---- Filter row: one row, above everything it scopes ---- */
 .filters {
@@ -129,18 +129,45 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
 }
 .filters .label { font-size: 13px; color: var(--muted); margin-right: 2px; }
 .seg { display: flex; gap: 4px; }
+.sort-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.sort-group select {
+  font: inherit; font-size: 13px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: 5px 8px; min-height: 30px; cursor: pointer;
+}
+#sortdir { min-width: 32px; padding: 5px 8px; }
 
 /* ---- Hero ---- */
 .hero {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; box-shadow: var(--shadow);
-  padding: 22px 24px; margin-bottom: 16px;
-  display: grid; grid-template-columns: minmax(0,auto) minmax(160px,1fr);
-  gap: 20px 32px; align-items: center;
+  padding: 22px 24px 18px; margin-bottom: 16px;
+}
+.hero-top {
+  display: flex; align-items: flex-end; gap: 16px 24px;
+  flex-wrap: wrap; margin-bottom: 12px;
+}
+.hero-controls {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-left: auto;
 }
 .hero-label { font-size: 13px; color: var(--ink-2); margin-bottom: 2px; }
 .hero-value { font-size: 56px; font-weight: 650; line-height: 1.05; letter-spacing: -0.025em; }
 .hero-sub { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.hero-window { font-size: 13px; color: var(--muted); }
+.axis {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--muted); margin-top: 3px;
+}
+.legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.legend:empty { display: none; }
+.leg {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 3px 10px; min-height: 26px; font-size: 12.5px;
+}
+.leg[aria-pressed="true"] { font-weight: 500; border-color: var(--border); }
+.leg[aria-pressed="false"] { opacity: 0.5; }
+.leg[aria-pressed="false"] .swatch { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--muted); }
 
 .delta { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .delta[data-dir="up"]   { color: var(--up); }
@@ -182,9 +209,11 @@ h2.section {
 .spark svg { display: block; }
 .spark-empty {
   height: 62px; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 0 12px;
   font-size: 12.5px; color: var(--muted);
   border: 1px dashed var(--grid); border-radius: 8px;
 }
+.spark-note { font-size: 10.5px; fill: var(--muted); }
 .tip {
   position: absolute; pointer-events: none; opacity: 0;
   transform: translate(-50%, -100%);
@@ -195,6 +224,9 @@ h2.section {
 }
 .tip b { font-weight: 650; }
 .tip .tip-t { color: var(--muted); font-size: 11px; display: block; }
+.tip .tip-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.tip .tip-row span:last-child { margin-left: auto; padding-left: 10px; font-variant-numeric: tabular-nums; }
+.tip .tip-rule { border-top: 1px solid var(--grid); margin: 5px 0 3px; }
 
 .foot {
   display: flex; gap: 18px; flex-wrap: wrap;
@@ -203,6 +235,8 @@ h2.section {
 .foot div { font-size: 12.5px; color: var(--ink-2); }
 .foot b { display: block; font-size: 16px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; }
 .foot .hint { color: var(--muted); font-weight: 400; font-size: 12px; }
+.foot2 { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; font-size: 12px; color: var(--muted); }
+.foot2 b { font-weight: 600; color: var(--ink-2); }
 
 /* ---- Table view (the WCAG-clean twin) ---- */
 details.table-view { margin-top: 28px; }
@@ -212,13 +246,21 @@ details.table-view summary {
 }
 details.table-view summary:hover { color: var(--ink); }
 .table-scroll { overflow-x: auto; margin-top: 10px; }
-table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 680px; }
 th, td { text-align: right; padding: 9px 12px; border-bottom: 1px solid var(--grid); }
 th:first-child, td:first-child { text-align: left; }
 thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
 tbody td { font-variant-numeric: tabular-nums; color: var(--ink); }
 tfoot td { font-weight: 650; font-variant-numeric: tabular-nums; border-bottom: none; }
 .name-cell { display: flex; align-items: center; gap: 8px; }
+th .th-sort {
+  background: none; border: 0; padding: 0; min-height: 0;
+  font: inherit; color: inherit; cursor: pointer;
+}
+th .th-sort:hover { color: var(--ink); }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
+th[aria-sort="ascending"] .th-sort::after { content: " ↑"; }
+th[aria-sort="descending"] .th-sort::after { content: " ↓"; }
 
 footer.page {
   margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--grid);
@@ -233,8 +275,10 @@ footer.page a { color: var(--ink-2); }
 
 @media (max-width: 620px) {
   body { padding: 18px 14px 48px; }
-  .hero { grid-template-columns: 1fr; padding: 18px; }
+  .hero { padding: 18px; }
   .hero-value { font-size: 46px; }
+  .hero-controls { margin-left: 0; }
+  .sort-group { margin-left: 0; }
   .kpis { grid-template-columns: 1fr; gap: 12px; }
   .kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 16px; }
   .kpi .k-value { font-size: 22px; margin: 0; }
@@ -260,25 +304,43 @@ footer.page a { color: var(--ink-2); }
   <div id="error-slot"></div>
 
   <div class="filters">
-    <span class="label">Compare against</span>
+    <span class="label" id="range-label">Compare against</span>
     <div class="seg" id="range" role="group" aria-label="Comparison window">
       <button type="button" data-days="1">24h</button>
       <button type="button" data-days="7" aria-pressed="true">7d</button>
       <button type="button" data-days="30">30d</button>
       <button type="button" data-days="0">All</button>
     </div>
+    <div class="sort-group">
+      <label class="label" for="sort">Sort by</label>
+      <select id="sort"></select>
+      <button type="button" id="sortdir" title="Reverse sort direction">↓</button>
+    </div>
   </div>
 
   <section class="hero" aria-label="Total subscribers">
-    <div>
-      <div class="hero-label">Total subscribers</div>
-      <div class="hero-value" id="hero-value">—</div>
-      <div class="hero-sub">
-        <span class="delta" id="hero-delta" data-dir="flat">—</span>
-        <span style="font-size:13px;color:var(--muted)" id="hero-window"></span>
+    <div class="hero-top">
+      <div>
+        <div class="hero-label">Total subscribers</div>
+        <div class="hero-value" id="hero-value">—</div>
+        <div class="hero-sub">
+          <span class="delta" id="hero-delta" data-dir="flat">—</span>
+          <span class="hero-window" id="hero-window"></span>
+        </div>
+      </div>
+      <div class="hero-controls">
+        <div class="seg" id="mode" role="group" aria-label="Chart mode">
+          <button type="button" data-mode="total" aria-pressed="true">Total</button>
+          <button type="button" data-mode="stacked">Stacked</button>
+          <button type="button" data-mode="velocity">Velocity</button>
+          <button type="button" data-mode="launch">Since launch</button>
+        </div>
+        <button type="button" id="hero-log" aria-pressed="false" title="Logarithmic scale">Log</button>
       </div>
     </div>
     <div class="spark" id="hero-spark"></div>
+    <div class="axis" id="hero-axis"></div>
+    <div class="legend" id="hero-legend"></div>
   </section>
 
   <div class="kpis">
@@ -295,10 +357,15 @@ footer.page a { color: var(--ink-2); }
     <div class="table-scroll">
       <table id="table">
         <thead><tr>
-          <th scope="col">Mod</th><th scope="col">Subscribers</th><th scope="col" id="th-change">Change</th>
-          <th scope="col">Favourites</th><th scope="col">Views</th>
+          <th scope="col">Mod</th>
+          <th scope="col" aria-sort="descending"><button type="button" class="th-sort" data-metric="subs">Subscribers</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="movers" id="th-change">Change</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="favs">Favourites</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="views">Views</button></th>
           <th scope="col">Rating</th><th scope="col">Votes</th>
           <th scope="col">Lifetime subs</th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="keep" title="Subscribers as a share of everyone who ever subscribed">Keep %</button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="conv" title="Subscribers as a share of page views">Conv %</button></th>
         </tr></thead>
         <tbody></tbody>
         <tfoot></tfoot>
@@ -334,6 +401,13 @@ function dataUrl() {
 let data = null;
 let rangeDays = Number(localStorage.getItem("rangeDays") ?? 7);
 
+const MODES = ["total", "stacked", "velocity", "launch"];
+let heroMode = MODES.includes(localStorage.getItem("heroMode")) ? localStorage.getItem("heroMode") : "total";
+let heroLog = localStorage.getItem("heroLog") === "1";
+// Hero-only, in memory only: which mod is on screen isn't worth restoring a
+// week later, and a persisted hide would look like missing data.
+const hiddenIds = new Set();
+
 // Live current numbers from api/stats.js, in history-row shape. Held in memory
 // only — nothing here is ever written down, which is the point: the tiles can
 // refresh every minute without anything being recorded every minute.
@@ -359,6 +433,8 @@ function fmt(n) {
   return nf.format(n);
 }
 
+const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 function relTime(sec) {
@@ -376,8 +452,40 @@ function absTime(sec) {
   });
 }
 
+// Axis ends carry only as much precision as the window needs.
+function axisTime(sec) {
+  const d = new Date(sec * 1000);
+  return rangeDays === 1
+    ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function ageLabel(sec) {
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  if (sec < 86400) return `${Math.round(sec / 3600)}h`;
+  const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
+  return h ? `${d}d ${h}h` : `${d}d`;
+}
+
+function bucketLabel(b, sec) {
+  const start = new Date(b * 1000);
+  if (sec >= 86400) {
+    return start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  const end = new Date((b + sec) * 1000);
+  const hm = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${hm(start)}–${hm(end)} · ${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
 const windowLabel = () =>
   rangeDays === 0 ? "since tracking began" : rangeDays === 1 ? "in 24h" : `in ${rangeDays}d`;
+
+// Since launch re-reads the range buttons as a zoom on each mod's first days,
+// so anything describing the chart's own window needs the other wording.
+const launchLabel = () =>
+  rangeDays === 0 ? "their whole life so far" : rangeDays === 1 ? "first 24h" : `first ${rangeDays} days`;
+
+const chartWindowLabel = () => (heroMode === "launch" ? launchLabel() : windowLabel());
 
 // Direction is carried by an arrow glyph as well as colour — never colour alone.
 function setDelta(el, diff, suffix = "") {
@@ -391,8 +499,19 @@ function setDelta(el, diff, suffix = "") {
 
 const rowsFor = (id) => data?.series?.[id] ?? [];
 
-// Current values prefer the live reading from /api/stats; charts and baselines
-// deliberately don't, since those describe recorded history. Splicing the two
+// History plus the live reading as a virtual final sample, so a chart ends
+// exactly where the number above it says it does. Never written down, and
+// never used by baseline(): a window comparison has to anchor to a recorded
+// sample, not to a value that vanishes on reload.
+function rowsLive(id) {
+  const rows = rowsFor(id);
+  const now = live[id];
+  if (!now) return rows;
+  const last = rows.at(-1);
+  return last && now[0] <= last[0] ? rows : [...rows, now];
+}
+
+// Current values prefer the live reading from /api/stats. Splicing the two
 // sources together here means every tile, delta and table cell picks up live
 // numbers without any of the render code knowing there are two sources at all.
 const latest = (id) => live[id] ?? rowsFor(id).at(-1) ?? null;
@@ -427,26 +546,75 @@ function totalDelta(field) {
   return any ? diff : null;
 }
 
-// Aggregate subscriber curve. Samples are per-mod and not aligned in time, so
-// step each mod forward independently across the union of timestamps.
-function totalSeries() {
+// Samples are per-mod and not aligned in time, so step each mod forward
+// independently across the union of timestamps. Returns each mod's stepped
+// value at every stamp as well as the sum, which is what lets the stacked
+// bands and the total curve share one pass.
+function alignedSeries(ids) {
+  const rows = Object.fromEntries(ids.map((id) => [id, rowsLive(id)]));
   const stamps = new Set();
-  for (const id of data.order) for (const r of rowsFor(id)) stamps.add(r[0]);
+  for (const id of ids) for (const r of rows[id]) stamps.add(r[0]);
   const sorted = [...stamps].sort((a, b) => a - b);
 
-  const cursor = Object.fromEntries(data.order.map((id) => [id, 0]));
-  const held = Object.fromEntries(data.order.map((id) => [id, null]));
+  const cursor = {}, held = {}, values = {};
+  for (const id of ids) { cursor[id] = 0; held[id] = null; values[id] = []; }
 
-  return sorted.map((t) => {
+  const total = [];
+  for (const t of sorted) {
     let sum = 0;
-    for (const id of data.order) {
-      const rows = rowsFor(id);
-      while (cursor[id] < rows.length && rows[cursor[id]][0] <= t) held[id] = rows[cursor[id]++];
-      if (held[id]) sum += held[id][FIELD.subs];
+    for (const id of ids) {
+      const rs = rows[id];
+      while (cursor[id] < rs.length && rs[cursor[id]][0] <= t) held[id] = rs[cursor[id]++];
+      const v = held[id] ? held[id][FIELD.subs] : 0;
+      values[id].push(v);
+      sum += v;
     }
-    return [t, sum];
-  });
+    total.push(sum);
+  }
+  return { stamps: sorted, values, total };
 }
+
+function totalSeries() {
+  const { stamps, total } = alignedSeries(data.order);
+  return stamps.map((t, i) => [t, total[i]]);
+}
+
+// ~24-30 bars per window, so velocity is never a comb or four blocks.
+const bucketSec = (days) => (days === 1 ? 3600 : days === 7 ? 21600 : 86400);
+
+// Gains per bucket: the last value in the bucket minus the last value at or
+// before its start. A bucket with no prior sample — the mod's history starts
+// mid-range — is skipped rather than drawn as a zero it can't stand behind.
+function velocity(id, from, to, sec) {
+  const rows = rowsLive(id);
+  if (rows.length < 2) return [];
+  const last = rows.at(-1)[0];
+  const start = Math.floor(from / sec) * sec;
+
+  let i = 0, held = null;
+  while (i < rows.length && rows[i][0] <= start) held = rows[i++];
+
+  const out = [];
+  for (let b = start; b < to; b += sec) {
+    const prior = held;
+    while (i < rows.length && rows[i][0] <= b + sec) held = rows[i++];
+    if (!prior || b > last) continue;
+    out.push([b, held[FIELD.subs] - prior[FIELD.subs], b + sec > last]);
+  }
+  return out;
+}
+
+// x is age at the sample, not wall-clock, so launches line up on day zero.
+function sinceLaunch(id) {
+  const created = data.mods?.[id]?.created;
+  if (!created) return [];
+  return rowsLive(id).map((r) => [r[0] - created, r[FIELD.subs]]);
+}
+
+// Workshop edits the poller has seen, as Steam's own `time_updated`. Labelled
+// only "Updated": that stamp moves on any edit, so a description tweak is
+// indistinguishable from a code release and the label mustn't imply otherwise.
+const eventsFor = (id) => data?.events?.[id] ?? [];
 
 function ratingOf(row) {
   if (!row || row[FIELD.up] == null) return null;
@@ -454,9 +622,174 @@ function ratingOf(row) {
   return { up, down, total: up + down, pct: up + down ? up / (up + down) : null };
 }
 
-/* ---------- sparkline ----------
-   Drawn in real pixels off a measured container width, so the 2px stroke and
-   the round end-dot keep their geometry instead of being scaled by a viewBox. */
+function ratio(id, num, den) {
+  const row = latest(id);
+  if (!row || !row[den]) return null;
+  return row[num] / row[den];
+}
+
+/* ---------- sorting ---------- */
+
+const SORTS = {
+  subs:   { label: "Subscribers", dir: "desc", value: (id) => latest(id)?.[FIELD.subs] ?? null },
+  movers: { label: "Movers",      dir: "desc", value: (id) => {
+    const now = latest(id), was = baseline(id);
+    return now && was ? now[FIELD.subs] - was[FIELD.subs] : null;
+  } },
+  keep:   { label: "Keep-rate",   dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.lifeSubs) },
+  conv:   { label: "Conversion",  dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.views) },
+  favs:   { label: "Favourites",  dir: "desc", value: (id) => latest(id)?.[FIELD.favs] ?? null },
+  views:  { label: "Views",       dir: "desc", value: (id) => latest(id)?.[FIELD.views] ?? null },
+  newest: { label: "Newest",      dir: "desc", value: (id) => data.mods?.[id]?.created ?? null },
+};
+
+function readSort() {
+  try {
+    const s = JSON.parse(localStorage.getItem("sortBy") ?? "");
+    if (SORTS[s?.metric] && (s.dir === "asc" || s.dir === "desc")) return s;
+  } catch { /* fall through to the default */ }
+  return { metric: "subs", dir: "desc" };
+}
+let sort = readSort();
+
+// Drives the cards and the table only. The stacked chart keeps publish order:
+// re-sorting bands would move every layer below a mover and show motion that
+// isn't growth.
+function sortedIds() {
+  const spec = SORTS[sort.metric] ?? SORTS.subs;
+  const sign = sort.dir === "asc" ? 1 : -1;
+  const idx = new Map(data.order.map((id, i) => [id, i]));
+  return [...data.order].sort((a, b) => {
+    const va = spec.value(a), vb = spec.value(b);
+    if (va == null || vb == null) {
+      if (va == null && vb == null) return idx.get(a) - idx.get(b);
+      return va == null ? 1 : -1;                      // nulls last both ways
+    }
+    return va === vb ? idx.get(a) - idx.get(b) : (va - vb) * sign;
+  });
+}
+
+function setSort(metric, flip) {
+  if (!SORTS[metric]) return;
+  sort = metric === sort.metric && flip
+    ? { metric, dir: sort.dir === "asc" ? "desc" : "asc" }
+    : { metric, dir: SORTS[metric].dir };
+  localStorage.setItem("sortBy", JSON.stringify(sort));
+  render();
+}
+
+/* ---------- chart primitives ----------
+   Drawn in real pixels off a measured container width, so strokes and end-dots
+   keep their geometry instead of being scaled by a viewBox. */
+
+const PAD = { x: 8, top: 10, bottom: 12 };
+
+const scaleX = (t0, t1, width) => (t) =>
+  PAD.x + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (width - 2 * PAD.x);
+
+// Log clamps the floor to 1 so a zero-subscriber sample can't blow up the scale.
+function scaleY(lo, hi, height, log) {
+  const top = PAD.top, bot = height - PAD.bottom;
+  if (log) {
+    const l0 = Math.log10(Math.max(1, lo));
+    const l1 = Math.log10(Math.max(hi, Math.max(1, lo) * 1.05));
+    return (v) => bot - ((Math.log10(Math.max(v, Math.max(1, lo))) - l0) / (l1 - l0)) * (bot - top);
+  }
+  let a = lo, b = hi;
+  if (a === b) { b += 1; a -= 1; }
+  return (v) => bot - ((v - a) / (b - a)) * (bot - top);
+}
+
+const path = (pts) =>
+  pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+
+// Update annotations: short ticks at the baseline rather than full-height
+// rules, which is what keeps them readable over a stacked area and inside a
+// 62px card sparkline. Drawn last so they sit above the fills. The second,
+// invisible line is the hit target — a 2px tick is not something you can point
+// at on a phone.
+function rugMarks(marks, height) {
+  const base = height - PAD.bottom, top = base - 7;
+  return marks.map((m) => `<g>
+      <line x1="${m.x.toFixed(1)}" y1="${top}" x2="${m.x.toFixed(1)}" y2="${base}"
+            stroke="${m.color}" stroke-width="2" stroke-linecap="round"/>
+      <line x1="${m.x.toFixed(1)}" y1="${(top - 5).toFixed(1)}" x2="${m.x.toFixed(1)}" y2="${base}"
+            stroke="transparent" stroke-width="11"><title>${m.label}</title></line>
+    </g>`).join("");
+}
+
+const rugLabel = (t, name) => `Updated${name ? ` · ${name}` : ""} · ${absTime(t)}`;
+
+// The crosshair, marker and tooltip, shared by the card sparklines and every
+// hero mode. hits are {x, y, ...}; format turns one into tooltip HTML.
+function attachProbe(host, svg, hits, format, opts = {}) {
+  if (!hits.length) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const width = Number(svg.getAttribute("width"));
+  const height = Number(svg.getAttribute("height"));
+
+  const cross = document.createElementNS(NS, "line");
+  cross.setAttribute("y1", String(PAD.top - 4));
+  cross.setAttribute("y2", String(height - PAD.bottom));
+  cross.setAttribute("stroke", "var(--muted)");
+  cross.setAttribute("stroke-width", "1");
+  cross.setAttribute("opacity", "0");
+  svg.appendChild(cross);
+
+  const dot = document.createElementNS(NS, "circle");
+  dot.setAttribute("r", "4.5");
+  dot.setAttribute("stroke", "var(--surface)");
+  dot.setAttribute("stroke-width", "2");
+  dot.setAttribute("opacity", "0");
+  if (opts.dot !== false) svg.appendChild(dot);
+
+  const tip = document.createElement("div");
+  tip.className = "tip";
+  host.appendChild(tip);
+
+  // 0 picks by x alone (one line, or a stack read at its top); 1 picks in two
+  // dimensions, which is the only way to hover one line out of seven.
+  const yw = opts.yWeight ?? 0;
+
+  const move = (clientX, clientY) => {
+    const box = svg.getBoundingClientRect();
+    const px = clientX - box.left, py = clientY - box.top;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < hits.length; i++) {
+      const dx = hits[i].x - px, dy = (hits[i].y - py) * yw;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const h = hits[best];
+    cross.setAttribute("x1", h.x); cross.setAttribute("x2", h.x);
+    cross.setAttribute("opacity", "1");
+    if (opts.dot !== false) {
+      dot.setAttribute("cx", h.x); dot.setAttribute("cy", h.y);
+      dot.setAttribute("fill", h.color ?? "var(--s1)");
+      dot.setAttribute("opacity", "1");
+    }
+    tip.innerHTML = format(h);
+    tip.style.opacity = "1";
+    const halfW = tip.offsetWidth / 2 + 2;
+    tip.style.left = `${Math.min(Math.max(h.x, halfW), Math.max(width - halfW, halfW))}px`;
+    tip.style.top = `${Math.max(h.y - 8, tip.offsetHeight + 2)}px`;
+  };
+  const clear = () => {
+    cross.setAttribute("opacity", "0");
+    dot.setAttribute("opacity", "0");
+    tip.style.opacity = "0";
+  };
+
+  svg.addEventListener("pointermove", (e) => move(e.clientX, e.clientY));
+  svg.addEventListener("pointerdown", (e) => move(e.clientX, e.clientY));
+  svg.addEventListener("pointerleave", clear);
+}
+
+function emptyChart(host, height, msg) {
+  host.innerHTML = `<div class="spark-empty"${height ? ` style="height:${height}px"` : ""}>${msg}</div>`;
+}
+
+/* ---------- sparklines (cards) ---------- */
 
 function sparkline(host, points, colorVar, opts = {}) {
   const height = opts.height ?? 62;
@@ -469,21 +802,18 @@ function sparkline(host, points, colorVar, opts = {}) {
     return;
   }
 
-  const padX = 8, padTop = 8, padBot = 10;
-  const xs = points.map((p) => p[0]);
-  const t0 = xs[0], t1 = xs.at(-1);
-  let lo = Math.min(...points.map((p) => p[1]));
-  let hi = Math.max(...points.map((p) => p[1]));
-  if (hi === lo) { hi += 1; lo -= 1; }            // flat series sits mid-band
-
-  const X = (t) => padX + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (width - 2 * padX);
-  const Y = (v) => height - padBot - ((v - lo) / (hi - lo)) * (height - padTop - padBot);
+  const t0 = points[0][0], t1 = points.at(-1)[0];
+  const lo = Math.min(...points.map((p) => p[1]));
+  const hi = Math.max(...points.map((p) => p[1]));
+  const X = scaleX(t0, t1, width);
+  const Y = scaleY(lo, hi, height, false);
 
   const pts = points.map((p) => [X(p[0]), Y(p[1])]);
-  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const area = `${line} L${pts.at(-1)[0].toFixed(1)} ${height - padBot} L${pts[0][0].toFixed(1)} ${height - padBot} Z`;
+  const line = path(pts);
+  const area = `${line} L${pts.at(-1)[0].toFixed(1)} ${height - PAD.bottom} L${pts[0][0].toFixed(1)} ${height - PAD.bottom} Z`;
   const [ex, ey] = pts.at(-1);
   const c = `var(${colorVar})`;
+  const noun = opts.noun ?? "subscribers";
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
@@ -491,68 +821,423 @@ function sparkline(host, points, colorVar, opts = {}) {
       <path d="${area}" fill="${c}" fill-opacity="0.10"/>
       <path d="${line}" fill="none" stroke="${c}" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round"/>
-      <line class="cross" x1="0" y1="${padTop - 4}" x2="0" y2="${height - padBot}"
-            stroke="var(--muted)" stroke-width="1" opacity="0"/>
-      <circle class="hit" r="4.5" fill="${c}" stroke="var(--surface)" stroke-width="2" opacity="0"/>
       <circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="4"
               fill="${c}" stroke="var(--surface)" stroke-width="2"/>
-    </svg>
-    <div class="tip"></div>`;
+      ${rugMarks((opts.rug ?? []).filter((t) => t >= t0 && t <= t1)
+        .map((t) => ({ x: X(t), color: c, label: rugLabel(t) })), height)}
+      <text class="spark-note" x="${width - 2}" y="${height - 1}" text-anchor="end">${fmt(lo)} → ${fmt(hi)}</text>
+    </svg>`;
 
-  const svg = host.querySelector("svg");
-  const cross = host.querySelector(".cross");
-  const hit = host.querySelector(".hit");
-  const tip = host.querySelector(".tip");
-  const noun = opts.noun ?? "subscribers";
+  attachProbe(host, host.querySelector("svg"),
+    points.map((p, i) => ({ x: pts[i][0], y: pts[i][1], color: c, t: p[0], v: p[1] })),
+    (h) => `<b>${fmt(h.v)}</b> ${noun}<span class="tip-t">${absTime(h.t)}</span>`);
+}
 
-  // Nearest-point in x — the hit area is the whole strip, not the 8px dot.
-  const move = (clientX) => {
-    const box = svg.getBoundingClientRect();
-    const px = clientX - box.left;
-    let best = 0;
-    for (let i = 1; i < pts.length; i++) {
-      if (Math.abs(pts[i][0] - px) < Math.abs(pts[best][0] - px)) best = i;
+// Bars share the sparkline's footprint so a card doesn't jump height when the
+// hero switches to Velocity.
+function sparkbars(host, buckets, colorVar, sec, opts = {}) {
+  const height = opts.height ?? 62;
+  const width = host.clientWidth;
+
+  if (!buckets.length || width < 40) {
+    host.innerHTML = `<div class="spark-empty">${
+      width < 40 ? "" : "Collecting history — the trend appears after the next change"
+    }</div>`;
+    return;
+  }
+
+  const lo = Math.min(0, ...buckets.map((b) => b[1]));
+  const hi = Math.max(0, ...buckets.map((b) => b[1]));
+  const Y = scaleY(lo, hi === lo ? lo + 1 : hi, height, false);
+  const slot = (width - 2 * PAD.x) / buckets.length;
+  const bw = Math.max(1.5, slot * 0.72);
+  const c = `var(${colorVar})`;
+  const zero = Y(0);
+
+  const idx = new Map(buckets.map(([b], i) => [b, i]));
+  const rug = (opts.rug ?? [])
+    .map((t) => [t, idx.get(Math.floor(t / sec) * sec)])
+    .filter(([, i]) => i !== undefined)
+    .map(([t, i]) => ({ x: PAD.x + (i + 0.5) * slot, color: c, label: rugLabel(t) }));
+
+  const bars = buckets.map(([b, gain, partial], i) => {
+    const cx = PAD.x + (i + 0.5) * slot;
+    const y = Y(gain);
+    return `<rect x="${(cx - bw / 2).toFixed(1)}" y="${Math.min(y, zero).toFixed(1)}"
+                  width="${bw.toFixed(1)}" height="${Math.max(1, Math.abs(y - zero)).toFixed(1)}"
+                  rx="1" fill="${c}" fill-opacity="${partial ? 0.3 : 0.85}"/>`;
+  }).join("");
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="${opts.label ?? "Rate"}: up to ${fmt(hi)} new ${opts.noun ?? "subscribers"} per ${
+           sec >= 86400 ? "day" : `${sec / 3600} hours`}">
+      ${lo < 0 ? `<line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>` : ""}
+      ${bars}
+      ${rugMarks(rug, height)}
+      <text class="spark-note" x="${width - 2}" y="${height - 1}" text-anchor="end">peak +${fmt(hi)}</text>
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"),
+    buckets.map(([b, gain, partial], i) => ({
+      x: PAD.x + (i + 0.5) * slot, y: Y(gain), color: c, b, gain, partial,
+    })),
+    (h) => `<b>${h.gain >= 0 ? "+" : "−"}${fmt(Math.abs(h.gain))}</b> ${opts.noun ?? "subscribers"}${
+      h.partial ? " so far" : ""}<span class="tip-t">${bucketLabel(h.b, sec)}</span>`,
+    { dot: false });
+}
+
+/* ---------- hero chart ---------- */
+
+// Publish order — never `slot`, which is only the order mods.json was edited in
+// (Book Tracker predates Turn Off Fridges but sits at slot 2), and never the
+// sort, which the reader can change under a chart that must not move.
+const createdOrder = () =>
+  [...data.order].filter((id) => data.mods?.[id]).sort(
+    (a, b) => (data.mods[a].created ?? 0) - (data.mods[b].created ?? 0));
+
+const heroIds = () => createdOrder().filter((id) => !hiddenIds.has(id));
+
+const colorOf = (id) => `var(${SLOT_VAR[data.mods?.[id]?.slot] ?? "--s1"})`;
+const shortOf = (id) => data.mods?.[id]?.short ?? id;
+
+const heroHeight = () => (innerWidth <= 620 ? 140 : 180);
+
+// Events on a linear time axis. `at` maps a timestamp to a chart x — which in
+// Since launch is the mod's age at that moment, not wall-clock.
+function timeRug(ids, inRange, at) {
+  const out = [];
+  for (const id of ids) {
+    for (const t of eventsFor(id)) {
+      if (!inRange(t, id)) continue;
+      out.push({ x: at(t, id), color: colorOf(id), label: rugLabel(t, shortOf(id)) });
     }
-    const [x, y] = pts[best];
-    cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("opacity", "1");
-    hit.setAttribute("cx", x); hit.setAttribute("cy", y); hit.setAttribute("opacity", "1");
-    tip.innerHTML = `<b>${fmt(points[best][1])}</b> ${noun}<span class="tip-t">${absTime(points[best][0])}</span>`;
-    tip.style.opacity = "1";
-    tip.style.left = `${Math.min(Math.max(x, 46), width - 46)}px`;
-    tip.style.top = `${Math.max(y - 8, 30)}px`;
-  };
-  const clear = () => {
-    cross.setAttribute("opacity", "0");
-    hit.setAttribute("opacity", "0");
-    tip.style.opacity = "0";
-  };
+  }
+  return out;
+}
 
-  svg.addEventListener("pointermove", (e) => move(e.clientX));
-  svg.addEventListener("pointerdown", (e) => move(e.clientX));
-  svg.addEventListener("pointerleave", clear);
+// Velocity's x is a bucket index, not a time, so an event lands under the bar
+// of the bucket it happened in or nowhere at all.
+function bucketRug(ids, buckets, sec, at) {
+  const idx = new Map(buckets.map((b, i) => [b, i]));
+  const out = [];
+  for (const id of ids) {
+    for (const t of eventsFor(id)) {
+      const i = idx.get(Math.floor(t / sec) * sec);
+      if (i === undefined) continue;
+      out.push({ x: at(i), color: colorOf(id), label: rugLabel(t, shortOf(id)) });
+    }
+  }
+  return out;
+}
+
+function axisEnds(left, right) {
+  const el = document.getElementById("hero-axis");
+  el.innerHTML = `<span>${left}</span><span>${right}</span>`;
+}
+
+// One row per mod under the headline figure in a stacked or bucketed tooltip.
+function breakdown(parts) {
+  const rows = parts
+    .filter((p) => p.v)
+    .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+    .map((p) => `<div class="tip-row"><span class="swatch" style="background:${p.color}"></span>${
+      p.name}<span>${p.sign && p.v > 0 ? "+" : ""}${fmt(p.v)}</span></div>`)
+    .join("");
+  return rows ? `<div class="tip-rule"></div>${rows}` : "";
+}
+
+function renderHeroChart() {
+  const host = document.getElementById("hero-spark");
+  const width = host.clientWidth;
+  const height = heroHeight();
+  document.getElementById("hero-axis").innerHTML = "";
+  if (width < 40) { host.innerHTML = ""; return; }
+
+  const ids = heroIds();
+  if (heroMode !== "total" && !ids.length) {
+    emptyChart(host, height, "Every mod is hidden — pick one from the legend below");
+    return;
+  }
+
+  const nowSec = Math.max(Date.now() / 1000, ...data.order.map((id) => rowsLive(id).at(-1)?.[0] ?? 0));
+  const cutoff = rangeDays === 0 ? 0 : nowSec - rangeDays * 86400;
+
+  if (heroMode === "stacked") drawStacked(host, width, height, ids, cutoff);
+  else if (heroMode === "velocity") drawVelocity(host, width, height, ids, cutoff, nowSec);
+  else if (heroMode === "launch") drawLaunch(host, width, height, ids);
+  else drawTotal(host, width, height, cutoff);
+}
+
+function drawTotal(host, width, height, cutoff) {
+  const agg = totalSeries();
+  let pts = agg.filter((p) => p[0] >= cutoff);
+  if (pts.length < 2) pts = agg;
+  if (pts.length < 2) {
+    emptyChart(host, height, "Collecting history — the trend appears after the next change");
+    return;
+  }
+
+  const t0 = pts[0][0], t1 = pts.at(-1)[0];
+  const X = scaleX(t0, t1, width);
+  const Y = scaleY(Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[1])), height, heroLog);
+  const xy = pts.map((p) => [X(p[0]), Y(p[1])]);
+  const line = path(xy);
+  const area = `${line} L${xy.at(-1)[0].toFixed(1)} ${height - PAD.bottom} L${xy[0][0].toFixed(1)} ${height - PAD.bottom} Z`;
+  const c = "var(--s1)";
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="Total subscribers ${chartWindowLabel()}: ${fmt(pts[0][1])} to ${fmt(pts.at(-1)[1])}${heroLog ? ", logarithmic scale" : ""}">
+      <path d="${area}" fill="${c}" fill-opacity="0.10"/>
+      <path d="${line}" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${xy.at(-1)[0].toFixed(1)}" cy="${xy.at(-1)[1].toFixed(1)}" r="4"
+              fill="${c}" stroke="var(--surface)" stroke-width="2"/>
+      ${rugMarks(timeRug(data.order, (t) => t >= t0 && t <= t1, X), height)}
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"),
+    pts.map((p, i) => ({ x: xy[i][0], y: xy[i][1], color: c, t: p[0], v: p[1] })),
+    (h) => `<b>${fmt(h.v)}</b> subscribers<span class="tip-t">${absTime(h.t)}</span>`);
+
+  axisEnds(axisTime(t0), "now");
+}
+
+function drawStacked(host, width, height, ids, cutoff) {
+  const { stamps, values, total } = alignedSeries(ids);
+  let from = stamps.findIndex((t) => t >= cutoff);
+  if (from < 0 || stamps.length - from < 2) from = 0;
+  const ts = stamps.slice(from);
+  if (ts.length < 2) {
+    emptyChart(host, height, "Collecting history — the trend appears after the next change");
+    return;
+  }
+
+  const X = scaleX(ts[0], ts.at(-1), width);
+  const cols = Object.fromEntries(ids.map((id) => [id, values[id].slice(from)]));
+  const tops = [];
+  const running = new Array(ts.length).fill(0);
+  for (const id of ids) {
+    tops.push(cols[id].map((v, i) => (running[i] += v)));
+  }
+  const sums = total.slice(from);
+  const Y = scaleY(0, Math.max(...sums), height, false);
+
+  let body = "";
+  let below = new Array(ts.length).fill(0);
+  ids.forEach((id, k) => {
+    const c = colorOf(id);
+    const top = tops[k].map((v, i) => [X(ts[i]), Y(v)]);
+    const bot = below.map((v, i) => [X(ts[i]), Y(v)]).reverse();
+    body += `<path d="${path(top)} ${bot.map(([x, y]) => `L${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")} Z"
+                   fill="${c}" fill-opacity="0.45"/>
+             <path d="${path(top)}" fill="none" stroke="${c}" stroke-width="1.5"
+                   stroke-linejoin="round"/>`;
+    below = tops[k];
+  });
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="Subscribers by mod, stacked in publish order, ${chartWindowLabel()}. Total ${fmt(sums.at(-1))}.">
+      ${body}
+      ${rugMarks(timeRug(ids, (t) => t >= ts[0] && t <= ts.at(-1), X), height)}
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"),
+    ts.map((t, i) => ({ x: X(t), y: Y(sums[i]), color: "var(--ink-2)", t, i })),
+    (h) => `<b>${fmt(sums[h.i])}</b> subscribers<span class="tip-t">${absTime(h.t)}</span>` +
+      breakdown(ids.map((id) => ({ name: shortOf(id), color: colorOf(id), v: cols[id][h.i] }))));
+
+  axisEnds(axisTime(ts[0]), "now");
+}
+
+function drawVelocity(host, width, height, ids, cutoff, nowSec) {
+  const sec = bucketSec(rangeDays);
+  const earliest = Math.min(...ids.map((id) => rowsLive(id)[0]?.[0] ?? Infinity));
+  const from = rangeDays === 0 ? (Number.isFinite(earliest) ? earliest : nowSec) : cutoff;
+
+  const gains = {};
+  const partial = new Set();
+  const starts = new Set();
+  for (const id of ids) {
+    const m = new Map();
+    for (const [b, g, p] of velocity(id, from, nowSec, sec)) {
+      m.set(b, g);
+      starts.add(b);
+      if (p) partial.add(b);
+    }
+    gains[id] = m;
+  }
+  const buckets = [...starts].sort((a, b) => a - b);
+  if (!buckets.length) {
+    emptyChart(host, height, "Collecting history — rate appears once a window has two samples");
+    return;
+  }
+
+  // Positive and negative gains stack away from a shared zero line, so a mod
+  // losing subscribers isn't quietly folded into the ones gaining them.
+  let hi = 0, lo = 0;
+  for (const b of buckets) {
+    let up = 0, down = 0;
+    for (const id of ids) {
+      const g = gains[id].get(b) ?? 0;
+      if (g >= 0) up += g; else down += g;
+    }
+    hi = Math.max(hi, up); lo = Math.min(lo, down);
+  }
+
+  const Y = scaleY(lo, hi === lo ? hi + 1 : hi, height, false);
+  const zero = Y(0);
+  const slot = (width - 2 * PAD.x) / buckets.length;
+  const bw = Math.max(1.5, slot * 0.72);
+
+  let body = "";
+  const hits = [];
+  buckets.forEach((b, i) => {
+    const cx = PAD.x + (i + 0.5) * slot;
+    let up = 0, down = 0, segs = "";
+    for (const id of ids) {
+      const g = gains[id].get(b) ?? 0;
+      if (!g) continue;
+      const y0 = g >= 0 ? Y(up) : Y(down);
+      if (g >= 0) up += g; else down += g;
+      const y1 = g >= 0 ? Y(up) : Y(down);
+      segs += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${Math.min(y0, y1).toFixed(1)}"
+                     width="${bw.toFixed(1)}" height="${Math.max(1, Math.abs(y1 - y0)).toFixed(1)}"
+                     fill="${colorOf(id)}"/>`;
+    }
+    if (!segs) {
+      segs = `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(zero - 1).toFixed(1)}"
+                    width="${bw.toFixed(1)}" height="1" fill="var(--grid)"/>`;
+    }
+    body += `<g opacity="${partial.has(b) ? 0.35 : 0.9}">${segs}</g>`;
+    hits.push({ x: cx, y: Y(up), b, up, down, partial: partial.has(b) });
+  });
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="New subscribers per ${sec >= 86400 ? "day" : `${sec / 3600} hours`} by mod, ${chartWindowLabel()}. Peak ${fmt(hi)}.">
+      ${lo < 0 ? `<line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>` : ""}
+      ${body}
+      ${rugMarks(bucketRug(ids, buckets, sec, (i) => PAD.x + (i + 0.5) * slot), height)}
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"), hits,
+    (h) => {
+      const net = h.up + h.down;
+      return `<b>${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</b> subscribers${h.partial ? " so far" : ""}` +
+        `<span class="tip-t">${bucketLabel(h.b, sec)}</span>` +
+        breakdown(ids.map((id) => ({ name: shortOf(id), color: colorOf(id), v: gains[id].get(h.b) ?? 0, sign: true })));
+    },
+    { dot: false });
+
+  axisEnds(axisTime(buckets[0]), "now");
+}
+
+function drawLaunch(host, width, height, ids) {
+  const maxAge = rangeDays === 0 ? Infinity : rangeDays * 86400;
+  const series = ids
+    .map((id) => ({ id, pts: sinceLaunch(id).filter((p) => p[0] >= 0 && p[0] <= maxAge) }))
+    .filter((s) => s.pts.length);
+  if (!series.length) {
+    emptyChart(host, height, "Collecting history — launch curves appear after the next sample");
+    return;
+  }
+
+  const x1 = Math.max(...series.map((s) => s.pts.at(-1)[0]), 3600);
+  const all = series.flatMap((s) => s.pts.map((p) => p[1]));
+  const X = scaleX(0, x1, width);
+  const Y = scaleY(Math.min(...all), Math.max(...all), height, heroLog);
+
+  let body = "";
+  const hits = [];
+  for (const s of series) {
+    const c = colorOf(s.id);
+    const xy = s.pts.map((p) => [X(p[0]), Y(p[1])]);
+    body += xy.length > 1
+      ? `<path d="${path(xy)}" fill="none" stroke="${c}" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round"/>`
+      : "";
+    // Hollow dot: the curve genuinely starts here, because tracking did — no
+    // fabricated lead-in back to the axis.
+    body += `<circle cx="${xy[0][0].toFixed(1)}" cy="${xy[0][1].toFixed(1)}" r="3.5"
+                     fill="var(--surface)" stroke="${c}" stroke-width="2"/>`;
+    s.pts.forEach((p, i) => hits.push({
+      x: xy[i][0], y: xy[i][1], color: c, id: s.id, age: p[0], v: p[1], first: i === 0,
+    }));
+  }
+
+  host.innerHTML = `
+    <svg width="${width}" height="${height}" role="img"
+         aria-label="Subscribers against age since publish, ${launchLabel()}, one line per mod${heroLog ? ", logarithmic scale" : ""}">
+      ${body}
+      ${rugMarks(timeRug(
+        series.map((s) => s.id),
+        (t, id) => t - data.mods[id].created >= 0 && t - data.mods[id].created <= x1,
+        (t, id) => X(t - data.mods[id].created)), height)}
+    </svg>`;
+
+  attachProbe(host, host.querySelector("svg"), hits,
+    (h) => `<b>${fmt(h.v)}</b> subscribers<span class="tip-t">${shortOf(h.id)} · ${ageLabel(h.age)} old</span>` +
+      (h.first && h.age > 3600 ? `<span class="tip-t">tracking began ${ageLabel(h.age)} after publish</span>` : ""),
+    { yWeight: 1 });
+
+  axisEnds("published", ageLabel(x1));
+}
+
+function renderLegend() {
+  const el = document.getElementById("hero-legend");
+  if (heroMode === "total") { el.innerHTML = ""; return; }
+  el.innerHTML = createdOrder().map((id) => `
+    <button type="button" class="leg" data-id="${id}" aria-pressed="${!hiddenIds.has(id)}">
+      <span class="swatch" style="background:${colorOf(id)}"></span>${shortOf(id)}
+    </button>`).join("");
 }
 
 /* ---------- render ---------- */
 
-function render() {
-  if (!data) return;
-
+function syncControls() {
   document.querySelectorAll("#range button").forEach((b) => {
     b.setAttribute("aria-pressed", String(Number(b.dataset.days) === rangeDays));
   });
+  document.querySelectorAll("#mode button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.mode === heroMode));
+  });
 
-  // Hero
+  const log = document.getElementById("hero-log");
+  // Hidden rather than disabled in the additive modes: a log stack is
+  // meaningless, and no control beats a wrong-but-plausible one.
+  log.hidden = heroMode === "stacked" || heroMode === "velocity";
+  log.setAttribute("aria-pressed", String(heroLog));
+
+  document.getElementById("range-label").textContent =
+    heroMode === "launch" ? "First" : "Compare against";
+
+  document.getElementById("sort").value = sort.metric;
+  const dir = document.getElementById("sortdir");
+  dir.textContent = sort.dir === "asc" ? "↑" : "↓";
+  dir.setAttribute("aria-label",
+    `Sorted ${sort.dir === "asc" ? "ascending" : "descending"} — reverse`);
+
+  document.querySelectorAll("#table thead th").forEach((th) => {
+    const btn = th.querySelector(".th-sort");
+    if (!btn) return;
+    th.setAttribute("aria-sort", btn.dataset.metric !== sort.metric ? "none"
+      : sort.dir === "asc" ? "ascending" : "descending");
+  });
+}
+
+function render() {
+  if (!data) return;
+
+  syncControls();
+
   document.getElementById("hero-value").textContent = fmt(totalNow(FIELD.subs));
   setDelta(document.getElementById("hero-delta"), totalDelta(FIELD.subs));
   document.getElementById("hero-window").textContent = windowLabel();
+  renderHeroChart();
+  renderLegend();
 
-  const agg = totalSeries();
-  const cutoff = rangeDays === 0 ? 0 : Date.now() / 1000 - rangeDays * 86400;
-  const heroPts = agg.filter((p) => p[0] >= cutoff);
-  sparkline(document.getElementById("hero-spark"),
-    heroPts.length >= 2 ? heroPts : agg, "--s1", { height: 76, label: "Total subscribers" });
-
-  // KPI row
   document.getElementById("kpi-favs").textContent = fmt(totalNow(FIELD.favs));
   setDelta(document.getElementById("kpi-favs-d"), totalDelta(FIELD.favs), windowLabel());
   document.getElementById("kpi-views").textContent = fmt(totalNow(FIELD.views));
@@ -575,13 +1260,23 @@ function render() {
     ratingD.textContent = haveVotes ? "No votes yet" : "Needs a Steam API key";
   }
 
-  // Cards. Built in two passes: auto-fit grid tracks only settle once every card
-  // is in the DOM, and a sparkline measured before then draws at the full row
-  // width and spills into its neighbours.
+  renderCards();
+  renderTable();
+  renderFreshness();
+}
+
+// Built in two passes: auto-fit grid tracks only settle once every card is in
+// the DOM, and a sparkline measured before then draws at the full row width and
+// spills into its neighbours.
+function renderCards() {
   const cards = document.getElementById("cards");
+  const nowSec = Date.now() / 1000;
+  const cutoff = rangeDays === 0 ? 0 : nowSec - rangeDays * 86400;
+  const sec = bucketSec(rangeDays);
   const pending = [];
   cards.innerHTML = "";
-  for (const id of data.order) {
+
+  for (const id of sortedIds()) {
     const mod = data.mods[id];
     const row = latest(id);
     if (!mod || !row) continue;
@@ -589,6 +1284,8 @@ function render() {
     const was = baseline(id);
     const colorVar = SLOT_VAR[mod.slot] ?? "--s1";
     const r = ratingOf(row);
+    const keep = ratio(id, FIELD.subs, FIELD.lifeSubs);
+    const conv = ratio(id, FIELD.subs, FIELD.views);
 
     const el = document.createElement("article");
     el.className = "card";
@@ -609,23 +1306,30 @@ function render() {
         <div>Rating<b>${
           r && r.total ? `${Math.round(r.pct * 100)}%` : "<span class='hint'>—</span>"
         }</b></div>
+      </div>
+      <div class="foot2">
+        <span title="Subscribers still holding, out of everyone who ever subscribed">Keep <b>${pct(keep)}</b></span>
+        <span title="Subscribers per page view">Conv <b>${pct(conv)}</b></span>
       </div>`;
 
     setDelta(el.querySelector(".delta"),
       was ? row[FIELD.subs] - was[FIELD.subs] : null, windowLabel());
     cards.appendChild(el);
 
-    const pts = rowsFor(id).filter((p) => p[0] >= cutoff).map((p) => [p[0], p[FIELD.subs]]);
-    const all = rowsFor(id).map((p) => [p[0], p[FIELD.subs]]);
-    pending.push([el.querySelector(".spark"), pts.length >= 2 ? pts : all, colorVar, mod.short]);
+    const host = el.querySelector(".spark");
+    const rug = eventsFor(id);
+    if (heroMode === "velocity") {
+      const rows = rowsLive(id);
+      const from = rangeDays === 0 ? (rows[0]?.[0] ?? nowSec) : cutoff;
+      pending.push([host, () => sparkbars(host, velocity(id, from, nowSec, sec), colorVar, sec, { label: mod.short, rug })]);
+    } else {
+      const all = rowsLive(id).map((p) => [p[0], p[FIELD.subs]]);
+      const pts = all.filter((p) => p[0] >= cutoff);
+      pending.push([host, () => sparkline(host, pts.length >= 2 ? pts : all, colorVar, { label: mod.short, rug })]);
+    }
   }
 
-  for (const [host, pts, colorVar, label] of pending) {
-    sparkline(host, pts, colorVar, { label });
-  }
-
-  renderTable();
-  renderFreshness();
+  for (const [, draw] of pending) draw();
 }
 
 function renderTable() {
@@ -634,7 +1338,7 @@ function renderTable() {
   document.getElementById("th-change").textContent = `Change ${windowLabel()}`;
   tbody.innerHTML = "";
 
-  for (const id of data.order) {
+  for (const id of sortedIds()) {
     const mod = data.mods[id], row = latest(id), was = baseline(id);
     if (!mod || !row) continue;
     const d = was ? row[FIELD.subs] - was[FIELD.subs] : null;
@@ -648,19 +1352,26 @@ function renderTable() {
       <td>${nf.format(row[FIELD.views])}</td>
       <td>${r && r.total ? Math.round(r.pct * 100) + "%" : "—"}</td>
       <td>${r ? `${r.up} / ${r.down}` : "—"}</td>
-      <td>${nf.format(row[FIELD.lifeSubs])}</td>`;
+      <td>${nf.format(row[FIELD.lifeSubs])}</td>
+      <td>${pct(ratio(id, FIELD.subs, FIELD.lifeSubs))}</td>
+      <td>${pct(ratio(id, FIELD.subs, FIELD.views))}</td>`;
     tbody.appendChild(tr);
   }
 
   const dSubs = totalDelta(FIELD.subs);
+  const subs = totalNow(FIELD.subs);
+  const lifeSubs = totalNow(FIELD.lifeSubs);
+  const views = totalNow(FIELD.views);
   tfoot.innerHTML = `<tr>
     <td>Total</td>
-    <td>${fmt(totalNow(FIELD.subs))}</td>
+    <td>${fmt(subs)}</td>
     <td>${dSubs == null ? "—" : dSubs === 0 ? "0" : (dSubs > 0 ? "+" : "−") + nf.format(Math.abs(dSubs))}</td>
     <td>${fmt(totalNow(FIELD.favs))}</td>
-    <td>${fmt(totalNow(FIELD.views))}</td>
+    <td>${fmt(views)}</td>
     <td></td><td></td>
-    <td>${fmt(totalNow(FIELD.lifeSubs))}</td>
+    <td>${fmt(lifeSubs)}</td>
+    <td>${pct(subs != null && lifeSubs ? subs / lifeSubs : null)}</td>
+    <td>${pct(subs != null && views ? subs / views : null)}</td>
   </tr>`;
 }
 
@@ -743,6 +1454,40 @@ document.getElementById("range").addEventListener("click", (e) => {
   rangeDays = Number(btn.dataset.days);
   localStorage.setItem("rangeDays", String(rangeDays));
   render();
+});
+
+document.getElementById("mode").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  heroMode = btn.dataset.mode;
+  localStorage.setItem("heroMode", heroMode);
+  render();
+});
+
+document.getElementById("hero-log").addEventListener("click", () => {
+  heroLog = !heroLog;
+  localStorage.setItem("heroLog", heroLog ? "1" : "0");
+  render();
+});
+
+document.getElementById("hero-legend").addEventListener("click", (e) => {
+  const btn = e.target.closest(".leg");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (hiddenIds.has(id)) hiddenIds.delete(id); else hiddenIds.add(id);
+  renderHeroChart();
+  renderLegend();
+});
+
+const sortSelect = document.getElementById("sort");
+sortSelect.innerHTML = Object.entries(SORTS)
+  .map(([k, s]) => `<option value="${k}">${s.label}</option>`).join("");
+sortSelect.addEventListener("change", () => setSort(sortSelect.value, false));
+document.getElementById("sortdir").addEventListener("click", () => setSort(sort.metric, true));
+
+document.querySelector("#table thead").addEventListener("click", (e) => {
+  const btn = e.target.closest(".th-sort");
+  if (btn) setSort(btn.dataset.metric, true);
 });
 
 document.getElementById("theme").addEventListener("click", () => {

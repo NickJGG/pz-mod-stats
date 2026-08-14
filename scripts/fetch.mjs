@@ -80,8 +80,30 @@ async function loadHistory() {
   try {
     return JSON.parse(await readFile(HISTORY, "utf8"));
   } catch {
-    return { updated: 0, fields: FIELDS, mods: {}, order: [], series: {} };
+    return { updated: 0, fields: FIELDS, mods: {}, order: [], series: {}, events: {} };
   }
+}
+
+// Workshop edits, as Steam's own `time_updated` rather than the time we
+// noticed: accurate to the minute and unaffected by a skipped poll.
+//
+// Kept beside `series` rather than as a ninth row field because compact()
+// thins samples older than 45 days to one per UTC day and would silently drop
+// the row that witnessed the change — losing events only in old history, where
+// nobody would ever notice.
+//
+// Returns true when something was appended, and the caller must let that reach
+// `changed`: an edit that moves no counters leaves sameNumbers() true, and
+// without it the workflow would skip the force-push and the event would be lost.
+function recordEvent(history, id, known, updated) {
+  if (!updated) return false;
+  const events = ((history.events ??= {})[id] ??= []);
+  // Seeds the list from the `updated` we already held, so the feature ships
+  // with one true annotation per mod instead of an empty map.
+  if (!events.length && known && known < updated) events.push(known);
+  if (events.at(-1) === updated) return false;
+  events.push(updated);
+  return true;
 }
 
 // One-per-UTC-day past the full-resolution window. Keeps the last sample of each
@@ -123,6 +145,10 @@ async function main() {
       continue;
     }
 
+    // Read before the record below overwrites it — it's the only memory we have
+    // of the previous poll's update stamp.
+    const known = history.mods[mod.id]?.updated;
+
     history.mods[mod.id] = {
       title: d.title,
       short: mod.short,
@@ -131,6 +157,11 @@ async function main() {
       updated: d.time_updated,
       url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.id}`,
     };
+
+    if (recordEvent(history, mod.id, known, d.time_updated)) {
+      changed = true;
+      console.log(`${mod.short}: updated ${new Date(d.time_updated * 1000).toISOString()}`);
+    }
 
     const v = votes.get(mod.id);
     const row = [

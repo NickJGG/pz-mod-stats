@@ -23,7 +23,21 @@ cron (5 min) ──▶ scripts/fetch.mjs ──▶ data/history.json ──▶ f
 ```
 
 `data/history.json` accumulates a sample every time a number moves, so the page
-shows growth over time — something the Workshop itself never gives you.
+shows growth over time — something the Workshop itself never gives you. It holds
+two records per mod:
+
+| Key | Shape | Holds |
+|---|---|---|
+| `series[id]` | `[[t, subs, favs, views, lifeSubs, lifeFavs, up, down], …]` | one row per sample, in `fields` order |
+| `events[id]` | `[t, …]` | Steam's `time_updated` each time the mod is edited |
+
+`events` is a list of its own rather than a ninth row field because samples
+older than 45 days are thinned to one per UTC day, which can delete the very row
+that witnessed an edit — and only in old history, where nobody would notice. The
+list is immune to that, and seeds itself from the `time_updated` already stored
+in `mods[id].updated`, so it starts with one true annotation per mod. Recording
+an event counts as a change: an edit that moves no counters must still reach the
+force-push, or the event is lost.
 
 **That file is not in the site, and not on `master`.** It lives alone on the
 `stats-data` orphan branch, which the poller rebuilds as a parentless commit and
@@ -54,7 +68,13 @@ trick — the CORS problem that forces the poller into CI doesn't apply, because
 nothing is cross-origin. It returns rows in exactly the `fields` order used by
 `history.json`, so `index.html` splices them in at `latest()` and every tile,
 delta and table cell picks them up without the render code knowing there are two
-sources. Charts and baselines deliberately keep using recorded history.
+sources.
+
+Charts splice it in too, at `rowsLive()`: the live reading is appended as a
+virtual final sample whenever it's newer than the last recorded one, so a line
+ends exactly where the number above it says it does. Baselines deliberately
+don't — `baseline()` reads `rowsFor()`, recorded history only, because a window
+comparison has to anchor to a sample that will still be there after a reload.
 
 If the function isn't there — a static host with no serverless runtime, or a
 local `index.html` opened straight off disk — the page notices the first 404 and
