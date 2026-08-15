@@ -129,6 +129,8 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
 }
 .section-head .label { font-size: 13px; color: var(--muted); margin-right: 2px; }
 .seg { display: flex; gap: 4px; }
+/* Two segs in one row read as one nine-button strip without this. */
+.filters .seg + .seg { margin-left: 6px; padding-left: 14px; border-left: 1px solid var(--grid); }
 .sort-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .sort-group select {
   font: inherit; font-size: 13px; color: var(--ink-2);
@@ -370,6 +372,11 @@ footer.page a { color: var(--ink-2); }
   </nav>
 
   <div class="filters">
+    <div class="seg" id="metric" role="group" aria-label="Metric">
+      <button type="button" data-metric="subs" aria-pressed="true">Subscribers</button>
+      <button type="button" data-metric="favs">Favourites</button>
+      <button type="button" data-metric="views">Views</button>
+    </div>
     <div class="seg" id="range" role="group" aria-label="Comparison window">
       <button type="button" data-hours="3">3h</button>
       <button type="button" data-hours="6">6h</button>
@@ -406,12 +413,7 @@ footer.page a { color: var(--ink-2); }
     <div class="legend" id="hero-legend"></div>
   </section>
 
-  <div class="kpis">
-    <div class="kpi"><div class="k-label">Favourites</div><div class="k-value" id="kpi-favs">—</div><span class="delta" id="kpi-favs-d" data-dir="flat">—</span></div>
-    <div class="kpi"><div class="k-label">Views</div><div class="k-value" id="kpi-views">—</div><span class="delta" id="kpi-views-d" data-dir="flat">—</span></div>
-    <div class="kpi"><div class="k-label">Rating</div><div class="k-value" id="kpi-rating">—</div><span class="delta" id="kpi-rating-d" data-dir="flat">—</span></div>
-    <div class="kpi" title="Everyone who subscribed in the window, minus what stuck"><div class="k-label">Unsubscribed</div><div class="k-value" id="kpi-lost">—</div><span class="delta" id="kpi-lost-d" data-dir="flat">—</span></div>
-  </div>
+  <div class="kpis" id="kpis"></div>
 
   <div class="section-head">
     <h2 class="section" id="cards-head">By mod</h2>
@@ -427,18 +429,7 @@ footer.page a { color: var(--ink-2); }
     <summary>Table view — every number in plain text</summary>
     <div class="table-scroll">
       <table id="table">
-        <thead><tr>
-          <th scope="col">Mod</th>
-          <th scope="col" aria-sort="descending"><button type="button" class="th-sort" data-metric="subs">Subscribers</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="movers" id="th-change">Change</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="left" id="th-left" title="Everyone who subscribed in the window, minus what stuck">Left</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="favs">Favourites</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="views">Views</button></th>
-          <th scope="col">Rating</th><th scope="col">Votes</th>
-          <th scope="col">Lifetime subs</th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="keep" title="Subscribers as a share of everyone who ever subscribed">Keep %</button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-metric="conv" title="Subscribers as a share of page views">Conv %</button></th>
-        </tr></thead>
+        <thead><tr></tr></thead>
         <tbody></tbody>
         <tfoot></tfoot>
       </table>
@@ -489,6 +480,40 @@ function readRange() {
 }
 let rangeHours = readRange();
 
+// What the charts, the cards and the derived figures are all measuring. A metric
+// is a running total Steam publishes, optionally with a lifetime counter behind
+// it: `life` is what makes churn and keep-rate possible at all, since it is the
+// only way to see someone leave. Views has no lifetime pair and needs none — a
+// view is never taken back — which is also why it can be a denominator but never
+// have one.
+const METRICS = {
+  subs: {
+    key: "subs", label: "Subscribers", noun: "subscribers",
+    field: FIELD.subs, life: FIELD.lifeSubs,
+    gained: "subscribed", lost: "left", lostLabel: "Unsubscribed",
+    churnAria: "Subscribers joining against subscribers leaving",
+  },
+  favs: {
+    key: "favs", label: "Favourites", noun: "favourites",
+    field: FIELD.favs, life: FIELD.lifeFavs,
+    gained: "favourited", lost: "removed", lostLabel: "Unfavourited",
+    churnAria: "Favourites added against favourites removed",
+  },
+  views: {
+    key: "views", label: "Views", noun: "views",
+    field: FIELD.views, life: null,
+  },
+};
+const METRIC_LIST = [METRICS.subs, METRICS.favs, METRICS.views];
+let metric = METRICS[localStorage.getItem("metric")] ?? METRICS.subs;
+
+// Churn needs a lifetime counter. Under Views there is none, so the tile, the
+// sort and the table column fall back to subscribers rather than vanishing —
+// each names itself, so a subscriber figure beside a views chart still reads.
+// The chart is the one place it can't fall back: a churn chart under a views
+// headline would be measuring something the page isn't about.
+const churnMetric = () => (metric.life ? metric : METRICS.subs);
+
 const MODES = ["total", "stacked", "velocity", "churn", "launch"];
 let heroMode = MODES.includes(localStorage.getItem("heroMode")) ? localStorage.getItem("heroMode") : "total";
 let heroLog = localStorage.getItem("heroLog") === "1";
@@ -505,6 +530,7 @@ const bucketed = (m) => m === "velocity" || m === "churn";
 // aside under a short window: a stack of one band is just the line.
 const effMode = () => {
   if (bucketed(heroMode) && !velocityOk()) return "total";
+  if (heroMode === "churn" && !metric.life) return "total";
   if (heroMode === "stacked" && focused()) return "total";
   return heroMode;
 };
@@ -617,12 +643,27 @@ const launchLabel = () =>
 
 const chartWindowLabel = () => (effMode() === "launch" ? launchLabel() : windowLabel());
 
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 // Direction is carried by an arrow glyph as well as colour — never colour alone.
+function deltaParts(diff, suffix = "") {
+  if (diff == null) return { dir: "flat", text: "—" };
+  if (diff === 0)   return { dir: "flat", text: `No change ${suffix}`.trim() };
+  return {
+    dir: diff > 0 ? "up" : "down",
+    text: `${diff > 0 ? "↑" : "↓"} ${fmt(Math.abs(diff))} ${suffix}`.trim(),
+  };
+}
+
 function setDelta(el, diff, suffix = "") {
-  if (diff == null) { el.textContent = "—"; el.dataset.dir = "flat"; return; }
-  if (diff === 0)   { el.textContent = `No change ${suffix}`.trim(); el.dataset.dir = "flat"; return; }
-  el.dataset.dir = diff > 0 ? "up" : "down";
-  el.textContent = `${diff > 0 ? "↑" : "↓"} ${fmt(Math.abs(diff))} ${suffix}`.trim();
+  const p = deltaParts(diff, suffix);
+  el.dataset.dir = p.dir;
+  el.textContent = p.text;
+}
+
+function deltaHtml(diff, suffix = "") {
+  const p = deltaParts(diff, suffix);
+  return `<span class="delta" data-dir="${p.dir}">${p.text}</span>`;
 }
 
 /* ---------- series helpers ---------- */
@@ -695,7 +736,7 @@ function alignedSeries(ids) {
     for (const id of ids) {
       const rs = rows[id];
       while (cursor[id] < rs.length && rs[cursor[id]][0] <= t) held[id] = rs[cursor[id]++];
-      const v = held[id] ? held[id][FIELD.subs] : 0;
+      const v = held[id] ? held[id][metric.field] : 0;
       values[id].push(v);
       sum += v;
     }
@@ -730,20 +771,20 @@ function velocity(id, from, to, sec) {
     const prior = held;
     while (i < rows.length && rows[i][0] <= b + sec) held = rows[i++];
     if (!prior || b > last) continue;
-    out.push([b, held[FIELD.subs] - prior[FIELD.subs], b + sec > last]);
+    out.push([b, held[metric.field] - prior[metric.field], b + sec > last]);
   }
   return out;
 }
 
-// Joins and departures per bucket. Steam publishes no unsubscribe counter, but
-// it publishes both a lifetime total and a current one: everyone who ever
-// subscribed, against what stuck. The gap between the two deltas is the only
-// place a page can see someone leave at all.
+// Joins and departures per bucket. Steam publishes no leave counter, but it
+// publishes both a lifetime total and a current one: everyone who ever counted,
+// against what stuck. The gap between the two deltas is the only place a page
+// can see someone leave at all.
 // Both sides are floored at zero — a lifetime counter that steps backwards is
 // Steam correcting itself, not a negative crowd of subscribers.
-function flow(id, from, to, sec) {
+function flow(id, from, to, sec, m = metric) {
   const rows = rowsLive(id);
-  if (rows.length < 2) return [];
+  if (rows.length < 2 || !m.life) return [];
   const last = rows.at(-1)[0];
   const start = Math.floor(from / sec) * sec;
 
@@ -755,9 +796,9 @@ function flow(id, from, to, sec) {
     const prior = held;
     while (i < rows.length && rows[i][0] <= b + sec) held = rows[i++];
     if (!prior || b > last) continue;
-    if (prior[FIELD.lifeSubs] == null || held[FIELD.lifeSubs] == null) continue;
-    const joined = Math.max(0, held[FIELD.lifeSubs] - prior[FIELD.lifeSubs]);
-    const net = held[FIELD.subs] - prior[FIELD.subs];
+    if (prior[m.life] == null || held[m.life] == null) continue;
+    const joined = Math.max(0, held[m.life] - prior[m.life]);
+    const net = held[m.field] - prior[m.field];
     out.push([b, joined, Math.max(0, joined - net), b + sec > last]);
   }
   return out;
@@ -765,18 +806,18 @@ function flow(id, from, to, sec) {
 
 // The same decomposition over the comparison window rather than per bucket, for
 // the tile, the table and the sort.
-function churnOf(id) {
+function churnOf(id, m = churnMetric()) {
   const now = latest(id), was = baseline(id);
-  if (!now || !was || now[FIELD.lifeSubs] == null || was[FIELD.lifeSubs] == null) return null;
-  const joined = Math.max(0, now[FIELD.lifeSubs] - was[FIELD.lifeSubs]);
-  const net = now[FIELD.subs] - was[FIELD.subs];
+  if (!m.life || !now || !was || now[m.life] == null || was[m.life] == null) return null;
+  const joined = Math.max(0, now[m.life] - was[m.life]);
+  const net = now[m.field] - was[m.field];
   return { joined, net, lost: Math.max(0, joined - net) };
 }
 
-function churnWindow() {
+function churnWindow(m = churnMetric()) {
   let joined = 0, lost = 0, any = false;
   for (const id of scopeIds()) {
-    const c = churnOf(id);
+    const c = churnOf(id, m);
     if (!c) continue;
     joined += c.joined; lost += c.lost; any = true;
   }
@@ -787,7 +828,7 @@ function churnWindow() {
 function sinceLaunch(id) {
   const created = data.mods?.[id]?.created;
   if (!created) return [];
-  return rowsLive(id).map((r) => [r[0] - created, r[FIELD.subs]]);
+  return rowsLive(id).map((r) => [r[0] - created, r[metric.field]]);
 }
 
 // Workshop edits the poller has seen, as Steam's own `time_updated`. Labelled
@@ -795,14 +836,14 @@ function sinceLaunch(id) {
 // indistinguishable from a code release and the label mustn't imply otherwise.
 const eventsFor = (id) => data?.events?.[id] ?? [];
 
-// Subscribers at the last sample on or before t.
-function subsAt(rows, t) {
+// The metric at the last sample on or before t.
+function valueAt(rows, t) {
   let v = null;
-  for (const r of rows) { if (r[0] <= t) v = r[FIELD.subs]; else break; }
+  for (const r of rows) { if (r[0] <= t) v = r[metric.field]; else break; }
   return v;
 }
 
-// What an edit was followed by: the subscribers gained in the span after it
+// What an edit was followed by: the metric gained in the span after it
 // against the same span before. The span shrinks for a recent edit so the two
 // sides stay equal — an hour of "after" compared against two days of "before"
 // would read as a collapse every time.
@@ -818,7 +859,7 @@ function impact(id, t) {
   // common ones — they say why rather than looking like a broken measurement.
   if (span < 3600) return { note: "too recent to measure" };
   if (t - span < rows[0][0]) return { note: "nothing recorded before this edit" };
-  const a = subsAt(rows, t - span), b = subsAt(rows, t), c = subsAt(rows, t + span);
+  const a = valueAt(rows, t - span), b = valueAt(rows, t), c = valueAt(rows, t + span);
   if (a == null || b == null || c == null) return null;
   return { before: b - a, after: c - b, span };
 }
@@ -834,6 +875,14 @@ function ratio(id, num, den) {
   if (!row || !row[den]) return null;
   return row[num] / row[den];
 }
+
+// Both pills are the active metric over a denominator, and each exists only
+// where its denominator does: keep needs a lifetime counter, conversion needs
+// page views to be something other than the metric itself.
+const keepOf = (id) => (metric.life ? ratio(id, metric.field, metric.life) : null);
+const convOf = (id) => (metric === METRICS.views ? null : ratio(id, metric.field, FIELD.views));
+const keepHelp = () => `${metric.label} still holding, out of everyone who ever ${metric.gained}`;
+const convHelp = () => `${metric.label} per page view`;
 
 /* ---------- self-calibrating bands ---------- */
 
@@ -860,21 +909,28 @@ const calBand = (cal, x) =>
 
 /* ---------- sorting ---------- */
 
+// The three stock sorts stay literal — each names the column it reads, so it can
+// never disagree with the chart, only differ from it deliberately. The derived
+// sorts have no column of their own and follow the active metric instead.
+// `ok` gates out a sort with nothing behind it, the way the mode buttons gate:
+// an option that silently does nothing is worse than no option.
 const SORTS = {
-  subs:   { label: "Subscribers", dir: "desc", value: (id) => latest(id)?.[FIELD.subs] ?? null },
+  subs:   { label: () => "Subscribers", dir: "desc", value: (id) => latest(id)?.[FIELD.subs] ?? null },
+  favs:   { label: () => "Favourites",  dir: "desc", value: (id) => latest(id)?.[FIELD.favs] ?? null },
+  views:  { label: () => "Views",       dir: "desc", value: (id) => latest(id)?.[FIELD.views] ?? null },
   // Key stays `movers`: it is the stored sort preference and the table header's
   // data-metric, neither of which the reader ever sees.
-  movers: { label: "Change",      dir: "desc", value: (id) => {
+  movers: { label: () => "Change",      dir: "desc", value: (id) => {
     const now = latest(id), was = baseline(id);
-    return now && was ? now[FIELD.subs] - was[FIELD.subs] : null;
+    return now && was ? now[metric.field] - was[metric.field] : null;
   } },
-  left:   { label: "Unsubscribed", dir: "desc", value: (id) => churnOf(id)?.lost ?? null },
-  keep:   { label: "Keep-rate",   dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.lifeSubs) },
-  conv:   { label: "Conversion",  dir: "desc", value: (id) => ratio(id, FIELD.subs, FIELD.views) },
-  favs:   { label: "Favourites",  dir: "desc", value: (id) => latest(id)?.[FIELD.favs] ?? null },
-  views:  { label: "Views",       dir: "desc", value: (id) => latest(id)?.[FIELD.views] ?? null },
-  newest: { label: "Newest",      dir: "desc", value: (id) => data.mods?.[id]?.created ?? null },
+  left:   { label: () => churnMetric().lostLabel, dir: "desc", value: (id) => churnOf(id)?.lost ?? null },
+  keep:   { label: () => "Keep-rate",   dir: "desc", value: keepOf, ok: () => !!metric.life },
+  conv:   { label: () => "Conversion",  dir: "desc", value: convOf, ok: () => metric !== METRICS.views },
+  newest: { label: () => "Newest",      dir: "desc", value: (id) => data.mods?.[id]?.created ?? null },
 };
+
+const sortOk = (key) => !!SORTS[key] && SORTS[key].ok?.() !== false;
 
 function readSort() {
   try {
@@ -885,13 +941,19 @@ function readSort() {
 }
 let sort = readSort();
 
+// A sort the current metric can't answer steps aside for that metric's own
+// column, exactly as a gated-out chart mode falls back to Total. `sort` itself
+// is left alone, so switching back restores the reader's pick.
+const effSort = () => (sortOk(sort.metric) ? sort : { metric: metric.key, dir: "desc" });
+
 // Drives the cards and the table only. The stacked chart keeps publish order:
 // re-sorting bands would move every layer below a mover and show motion that
 // isn't growth.
 function sortedIds() {
   if (focused()) return [focused()];
-  const spec = SORTS[sort.metric] ?? SORTS.subs;
-  const sign = sort.dir === "asc" ? 1 : -1;
+  const active = effSort();
+  const spec = SORTS[active.metric] ?? SORTS.subs;
+  const sign = active.dir === "asc" ? 1 : -1;
   const idx = new Map(data.order.map((id, i) => [id, i]));
   return [...data.order].sort((a, b) => {
     const va = spec.value(a), vb = spec.value(b);
@@ -903,12 +965,26 @@ function sortedIds() {
   });
 }
 
-function setSort(metric, flip) {
-  if (!SORTS[metric]) return;
-  sort = metric === sort.metric && flip
-    ? { metric, dir: sort.dir === "asc" ? "desc" : "asc" }
-    : { metric, dir: SORTS[metric].dir };
+function setSort(key, flip, redraw = true) {
+  if (!SORTS[key]) return;
+  // Flips from what the reader can actually see, which is the effective sort —
+  // reversing a fallback has to reverse the fallback, not the pick behind it.
+  const cur = effSort();
+  sort = key === cur.metric && flip
+    ? { metric: key, dir: cur.dir === "asc" ? "desc" : "asc" }
+    : { metric: key, dir: SORTS[key].dir };
   localStorage.setItem("sortBy", JSON.stringify(sort));
+  if (redraw) render();
+}
+
+function setMetric(key) {
+  if (!METRICS[key] || METRICS[key] === metric) return;
+  const prev = metric;
+  metric = METRICS[key];
+  localStorage.setItem("metric", key);
+  // A sort resting on the old metric's own column moves to the new one's. Any
+  // other column the reader picked is a deliberate cross-reference and stays.
+  if (sort.metric === prev.key) setSort(key, false, false);
   render();
 }
 
@@ -921,7 +997,7 @@ const PAD = { x: 8, top: 10, bottom: 12 };
 const scaleX = (t0, t1, width) => (t) =>
   PAD.x + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (width - 2 * PAD.x);
 
-// Log clamps the floor to 1 so a zero-subscriber sample can't blow up the scale.
+// Log clamps the floor to 1 so a zero reading can't blow up the scale.
 function scaleY(lo, hi, height, log) {
   const top = PAD.top, bot = height - PAD.bottom;
   if (log) {
@@ -1058,7 +1134,7 @@ function sparkline(host, points, colorVar, opts = {}) {
   const area = `${line} L${pts.at(-1)[0].toFixed(1)} ${height - PAD.bottom} L${pts[0][0].toFixed(1)} ${height - PAD.bottom} Z`;
   const [ex, ey] = pts.at(-1);
   const c = `var(${colorVar})`;
-  const noun = opts.noun ?? "subscribers";
+  const noun = opts.noun ?? metric.noun;
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
@@ -1115,7 +1191,7 @@ function sparkbars(host, buckets, colorVar, sec, opts = {}) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="${opts.label ?? "Rate"}: up to ${fmt(hi)} new ${opts.noun ?? "subscribers"} per ${
+         aria-label="${opts.label ?? "Rate"}: up to ${fmt(hi)} new ${opts.noun ?? metric.noun} per ${
            sec >= 86400 ? "day" : `${sec / 3600} hours`}">
       ${lo < 0 ? `<line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>` : ""}
       ${bars}
@@ -1127,7 +1203,7 @@ function sparkbars(host, buckets, colorVar, sec, opts = {}) {
     buckets.map(([b, gain, partial], i) => ({
       x: PAD.x + (i + 0.5) * slot, y: Y(gain), color: c, b, gain, partial,
     })),
-    (h) => `<b>${h.gain >= 0 ? "+" : "−"}${fmt(Math.abs(h.gain))}</b> ${opts.noun ?? "subscribers"}${
+    (h) => `<b>${h.gain >= 0 ? "+" : "−"}${fmt(Math.abs(h.gain))}</b> ${opts.noun ?? metric.noun}${
       h.partial ? " so far" : ""}<span class="tip-t">${bucketLabel(h.b, sec)}</span>`,
     { dot: false });
 }
@@ -1175,7 +1251,7 @@ function sparkflow(host, buckets, colorVar, sec, opts = {}) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="${opts.label ?? "Churn"}: ${fmt(totJoined)} subscribed, ${fmt(totLost)} left, per ${
+         aria-label="${opts.label ?? "Churn"}: ${fmt(totJoined)} ${metric.gained}, ${fmt(totLost)} ${metric.lost}, per ${
            sec >= 86400 ? "day" : `${sec / 3600} hours`}">
       <line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
       ${bars}
@@ -1187,7 +1263,7 @@ function sparkflow(host, buckets, colorVar, sec, opts = {}) {
     buckets.map(([b, joined, lost, partial], i) => ({
       x: PAD.x + (i + 0.5) * slot, y: Y(joined), color: c, b, joined, lost, partial,
     })),
-    (h) => `<b>+${fmt(h.joined)}</b> subscribed · <b>−${fmt(h.lost)}</b> left${
+    (h) => `<b>+${fmt(h.joined)}</b> ${metric.gained} · <b>−${fmt(h.lost)}</b> ${metric.lost}${
       h.partial ? " so far" : ""}<span class="tip-t">${bucketLabel(h.b, sec)}</span>`,
     { dot: false });
 }
@@ -1293,7 +1369,7 @@ function drawTotal(host, width, height, cutoff) {
   const line = path(xy);
   const area = `${line} L${xy.at(-1)[0].toFixed(1)} ${height - PAD.bottom} L${xy[0][0].toFixed(1)} ${height - PAD.bottom} Z`;
   const c = focused() ? colorOf(focused()) : "var(--s1)";
-  const who = focused() ? `${shortOf(focused())} subscribers` : "Total subscribers";
+  const who = focused() ? `${shortOf(focused())} ${metric.noun}` : `Total ${metric.noun}`;
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
@@ -1307,7 +1383,7 @@ function drawTotal(host, width, height, cutoff) {
 
   attachProbe(host, host.querySelector("svg"),
     pts.map((p, i) => ({ x: xy[i][0], y: xy[i][1], color: c, t: p[0], v: p[1] })),
-    (h) => `<b>${fmt(h.v)}</b> subscribers<span class="tip-t">${absTime(h.t)}</span>`);
+    (h) => `<b>${fmt(h.v)}</b> ${metric.noun}<span class="tip-t">${absTime(h.t)}</span>`);
 
   axisEnds(axisTime(t0), "now");
 }
@@ -1347,14 +1423,14 @@ function drawStacked(host, width, height, ids, cutoff) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="Subscribers by mod, stacked in publish order, ${chartWindowLabel()}. Total ${fmt(sums.at(-1))}.">
+         aria-label="${metric.label} by mod, stacked in publish order, ${chartWindowLabel()}. Total ${fmt(sums.at(-1))}.">
       ${body}
       ${rugMarks(timeRug(ids, (t) => t >= ts[0] && t <= ts.at(-1), X), height)}
     </svg>`;
 
   attachProbe(host, host.querySelector("svg"),
     ts.map((t, i) => ({ x: X(t), y: Y(sums[i]), color: "var(--ink-2)", t, i })),
-    (h) => `<b>${fmt(sums[h.i])}</b> subscribers<span class="tip-t">${absTime(h.t)}</span>` +
+    (h) => `<b>${fmt(sums[h.i])}</b> ${metric.noun}<span class="tip-t">${absTime(h.t)}</span>` +
       breakdown(ids.map((id) => ({ name: shortOf(id), color: colorOf(id), v: cols[id][h.i] }))));
 
   axisEnds(axisTime(ts[0]), "now");
@@ -1384,7 +1460,7 @@ function drawVelocity(host, width, height, ids, cutoff, nowSec) {
   }
 
   // Positive and negative gains stack away from a shared zero line, so a mod
-  // losing subscribers isn't quietly folded into the ones gaining them.
+  // losing ground isn't quietly folded into the ones gaining it.
   let hi = 0, lo = 0;
   for (const b of buckets) {
     let up = 0, down = 0;
@@ -1425,7 +1501,7 @@ function drawVelocity(host, width, height, ids, cutoff, nowSec) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="New subscribers per ${sec >= 86400 ? "day" : `${sec / 3600} hours`} by mod, ${chartWindowLabel()}. Peak ${fmt(hi)}.">
+         aria-label="New ${metric.noun} per ${sec >= 86400 ? "day" : `${sec / 3600} hours`} by mod, ${chartWindowLabel()}. Peak ${fmt(hi)}.">
       ${lo < 0 ? `<line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>` : ""}
       ${body}
       ${rugMarks(bucketRug(ids, buckets, sec, (i) => PAD.x + (i + 0.5) * slot), height)}
@@ -1434,7 +1510,7 @@ function drawVelocity(host, width, height, ids, cutoff, nowSec) {
   attachProbe(host, host.querySelector("svg"), hits,
     (h) => {
       const net = h.up + h.down;
-      return `<b>${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</b> subscribers${h.partial ? " so far" : ""}` +
+      return `<b>${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</b> ${metric.noun}${h.partial ? " so far" : ""}` +
         `<span class="tip-t">${bucketLabel(h.b, sec)}</span>` +
         breakdown(ids.map((id) => ({ name: shortOf(id), color: colorOf(id), v: gains[id].get(h.b) ?? 0, sign: true })));
     },
@@ -1516,8 +1592,8 @@ function drawChurn(host, width, height, ids, cutoff, nowSec) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="Subscribers joining against subscribers leaving per ${
-           sec >= 86400 ? "day" : `${sec / 3600} hours`}, ${chartWindowLabel()}. Peak ${fmt(hi)} joined.">
+         aria-label="${metric.churnAria} per ${
+           sec >= 86400 ? "day" : `${sec / 3600} hours`}, ${chartWindowLabel()}. Peak ${fmt(hi)} gained.">
       <line x1="${PAD.x}" y1="${zero.toFixed(1)}" x2="${width - PAD.x}" y2="${zero.toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
       ${body}
       ${netPts.length > 1 ? `<path d="${path(netPts)}" fill="none" stroke="var(--ink-2)" stroke-width="1.5"
@@ -1531,8 +1607,8 @@ function drawChurn(host, width, height, ids, cutoff, nowSec) {
       return `<b>${net >= 0 ? "+" : "−"}${fmt(Math.abs(net))}</b> net${h.partial ? " so far" : ""}` +
         `<span class="tip-t">${bucketLabel(h.b, sec)}</span>` +
         `<div class="tip-rule"></div>` +
-        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2)"></span>Subscribed<span>+${fmt(h.up)}</span></div>` +
-        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2);opacity:0.4"></span>Left<span>−${fmt(h.down)}</span></div>`;
+        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2)"></span>${cap(metric.gained)}<span>+${fmt(h.up)}</span></div>` +
+        `<div class="tip-row"><span class="swatch" style="background:var(--ink-2);opacity:0.4"></span>${cap(metric.lost)}<span>−${fmt(h.down)}</span></div>`;
     },
     { dot: false });
 
@@ -1574,7 +1650,7 @@ function drawLaunch(host, width, height, ids) {
 
   host.innerHTML = `
     <svg width="${width}" height="${height}" role="img"
-         aria-label="Subscribers against age since publish, ${launchLabel()}, one line per mod${heroLog ? ", logarithmic scale" : ""}">
+         aria-label="${metric.label} against age since publish, ${launchLabel()}, one line per mod${heroLog ? ", logarithmic scale" : ""}">
       ${body}
       ${rugMarks(timeRug(
         series.map((s) => s.id),
@@ -1583,7 +1659,7 @@ function drawLaunch(host, width, height, ids) {
     </svg>`;
 
   attachProbe(host, host.querySelector("svg"), hits,
-    (h) => `<b>${fmt(h.v)}</b> subscribers<span class="tip-t">${shortOf(h.id)} · ${ageLabel(h.age)} old</span>` +
+    (h) => `<b>${fmt(h.v)}</b> ${metric.noun}<span class="tip-t">${shortOf(h.id)} · ${ageLabel(h.age)} old</span>` +
       (h.first && h.age > 3600 ? `<span class="tip-t">tracking began ${ageLabel(h.age)} after publish</span>` : ""),
     { yWeight: 1 });
 
@@ -1640,21 +1716,28 @@ function syncControls() {
   if (f) document.getElementById("crumb-cur").textContent = shortOf(f);
 
   document.getElementById("hero-label").innerHTML = f
-    ? `<span class="swatch" style="background:${colorOf(f)};display:inline-block;margin-right:6px"></span>${shortOf(f)} · subscribers`
-    : "Total subscribers";
+    ? `<span class="swatch" style="background:${colorOf(f)};display:inline-block;margin-right:6px"></span>${shortOf(f)} · ${metric.noun}`
+    : `Total ${metric.noun}`;
   document.getElementById("hero").setAttribute("aria-label",
-    f ? `${shortOf(f)} subscribers` : "Total subscribers");
+    f ? `${shortOf(f)} ${metric.noun}` : `Total ${metric.noun}`);
 
   document.getElementById("cards-head").textContent = f ? "Updates" : "By mod";
   document.getElementById("sort-group").hidden = !!f;
 
+  document.querySelectorAll("#metric button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.metric === metric.key));
+  });
   document.querySelectorAll("#range button").forEach((b) => {
     b.setAttribute("aria-pressed", String(Number(b.dataset.hours) === rangeHours));
   });
   document.querySelectorAll("#mode button").forEach((b) => {
     b.hidden = (bucketed(b.dataset.mode) && !velocityOk())
+      || (b.dataset.mode === "churn" && !metric.life)
       || (b.dataset.mode === "stacked" && !!f);
     b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+    if (b.dataset.mode === "churn" && metric.life) {
+      b.title = `Everyone who ${metric.gained} against what stuck`;
+    }
   });
 
   const log = document.getElementById("hero-log");
@@ -1668,18 +1751,57 @@ function syncControls() {
   document.getElementById("range").setAttribute("aria-label",
     mode === "launch" ? "Window from each mod's launch" : "Comparison window");
 
-  document.getElementById("sort").value = sort.metric;
+  // Rebuilt every render: two of the labels move with the metric, and the two
+  // ratio sorts drop out entirely under a metric that can't answer them.
+  const active = effSort();
+  const select = document.getElementById("sort");
+  // Only written when it actually changes: the page re-renders every minute, and
+  // replacing the options under an open menu closes it.
+  const opts = Object.entries(SORTS)
+    .filter(([k]) => sortOk(k))
+    .map(([k, s]) => `<option value="${k}">${s.label()}</option>`).join("");
+  if (select.innerHTML !== opts) select.innerHTML = opts;
+  select.value = active.metric;
   const dir = document.getElementById("sortdir");
-  dir.textContent = sort.dir === "asc" ? "↑" : "↓";
+  dir.textContent = active.dir === "asc" ? "↑" : "↓";
   dir.setAttribute("aria-label",
-    `Sorted ${sort.dir === "asc" ? "ascending" : "descending"} — reverse`);
+    `Sorted ${active.dir === "asc" ? "ascending" : "descending"} — reverse`);
+}
 
-  document.querySelectorAll("#table thead th").forEach((th) => {
-    const btn = th.querySelector(".th-sort");
-    if (!btn) return;
-    th.setAttribute("aria-sort", btn.dataset.metric !== sort.metric ? "none"
-      : sort.dir === "asc" ? "ascending" : "descending");
-  });
+const kpiTile = (label, value, sub, help) =>
+  `<div class="kpi"${help ? ` title="${help}"` : ""}><div class="k-label">${label}</div>` +
+  `<div class="k-value">${value}</div>${sub}</div>`;
+
+// The tiles carry the metrics the chart isn't carrying, so no figure on the page
+// is printed twice. Rating holds its place whatever the chart shows: a
+// proportion can't be summed across mods, so it is never a chart metric and this
+// is the only place it lives.
+function renderKpis() {
+  const others = METRIC_LIST.filter((m) => m !== metric);
+
+  let up = 0, down = 0, haveVotes = false;
+  for (const id of scopeIds()) {
+    const r = ratingOf(latest(id));
+    if (r) { up += r.up; down += r.down; haveVotes = true; }
+  }
+  const rated = haveVotes && up + down > 0;
+
+  const cm = churnMetric();
+  const churn = churnWindow(cm);
+  const lostSub = !churn ? "Needs two samples"
+    : churn.joined ? `${pct(churn.lost / churn.joined)} of ${fmt(churn.joined)} who ${cm.gained} ${windowLabel()}`
+    : `Nobody ${cm.gained} ${windowLabel()}`;
+
+  document.getElementById("kpis").innerHTML =
+    others.map((m) => kpiTile(m.label, fmt(totalNow(m.field)),
+      deltaHtml(totalDelta(m.field), windowLabel()))).join("") +
+    kpiTile("Rating", rated ? `${Math.round((up / (up + down)) * 100)}%` : "—",
+      `<span class="delta" data-dir="flat">${
+        rated ? `${fmt(up)} up · ${fmt(down)} down`
+          : haveVotes ? "No votes yet" : "Needs a Steam API key"}</span>`) +
+    kpiTile(cm.lostLabel, churn ? fmt(churn.lost) : "—",
+      `<span class="delta" data-dir="flat">${lostSub}</span>`,
+      `Everyone who ${cm.gained} in the window, minus what stuck`);
 }
 
 function render() {
@@ -1687,47 +1809,12 @@ function render() {
 
   syncControls();
 
-  document.getElementById("hero-value").textContent = fmt(totalNow(FIELD.subs));
-  setDelta(document.getElementById("hero-delta"), totalDelta(FIELD.subs));
+  document.getElementById("hero-value").textContent = fmt(totalNow(metric.field));
+  setDelta(document.getElementById("hero-delta"), totalDelta(metric.field));
   document.getElementById("hero-window").textContent = windowLabel();
   renderHeroChart();
   renderLegend();
-
-  document.getElementById("kpi-favs").textContent = fmt(totalNow(FIELD.favs));
-  setDelta(document.getElementById("kpi-favs-d"), totalDelta(FIELD.favs), windowLabel());
-  document.getElementById("kpi-views").textContent = fmt(totalNow(FIELD.views));
-  setDelta(document.getElementById("kpi-views-d"), totalDelta(FIELD.views), windowLabel());
-
-  let up = 0, down = 0, haveVotes = false;
-  for (const id of scopeIds()) {
-    const r = ratingOf(latest(id));
-    if (r) { up += r.up; down += r.down; haveVotes = true; }
-  }
-  const ratingEl = document.getElementById("kpi-rating");
-  const ratingD = document.getElementById("kpi-rating-d");
-  if (haveVotes && up + down > 0) {
-    ratingEl.textContent = `${Math.round((up / (up + down)) * 100)}%`;
-    ratingD.dataset.dir = "flat";
-    ratingD.textContent = `${fmt(up)} up · ${fmt(down)} down`;
-  } else {
-    ratingEl.textContent = "—";
-    ratingD.dataset.dir = "flat";
-    ratingD.textContent = haveVotes ? "No votes yet" : "Needs a Steam API key";
-  }
-
-  const churn = churnWindow();
-  const lostEl = document.getElementById("kpi-lost");
-  const lostD = document.getElementById("kpi-lost-d");
-  lostD.dataset.dir = "flat";
-  if (!churn) {
-    lostEl.textContent = "—";
-    lostD.textContent = "Needs two samples";
-  } else {
-    lostEl.textContent = fmt(churn.lost);
-    lostD.textContent = churn.joined
-      ? `${pct(churn.lost / churn.joined)} of ${fmt(churn.joined)} who subscribed ${windowLabel()}`
-      : `Nobody subscribed ${windowLabel()}`;
-  }
+  renderKpis();
 
   renderCards();
   renderTable();
@@ -1759,18 +1846,23 @@ function renderCards() {
 
   // Banded against every tracked mod, not just the ones on screen, so the
   // comparison doesn't shift under a sort or a filter.
-  const calKeep = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.lifeSubs)));
-  const calConv = calibrate(data.order.map((id) => ratio(id, FIELD.subs, FIELD.views)));
+  const calKeep = calibrate(data.order.map(keepOf));
+  const calConv = calibrate(data.order.map(convOf));
+  // Both pills fall away together under a metric that is its own lifetime total
+  // and its own denominator, so every card loses the same row and the grid stays
+  // level rather than going ragged.
+  const pills = (id) =>
+    [metric.life ? calPill("Keep", keepOf(id), calKeep, keepHelp()) : "",
+     metric === METRICS.views ? "" : calPill("Conv", convOf(id), calConv, convHelp())]
+      .join("");
 
   const f = focused();
   cards.classList.toggle("focus-view", !!f);
   if (f) {
-    cards.innerHTML = `
-      <div class="focus-pills">
-        ${calPill("Keep", ratio(f, FIELD.subs, FIELD.lifeSubs), calKeep, "Subscribers still holding, out of everyone who ever subscribed")}
-        ${calPill("Conv", ratio(f, FIELD.subs, FIELD.views), calConv, "Subscribers per page view")}
-      </div>
-      <div class="log">${renderLog(f)}</div>`;
+    const fp = pills(f);
+    cards.innerHTML =
+      (fp ? `<div class="focus-pills">${fp}</div>` : "") +
+      `<div class="log">${renderLog(f)}</div>`;
     return;
   }
 
@@ -1782,8 +1874,8 @@ function renderCards() {
     const was = baseline(id);
     const colorVar = SLOT_VAR[mod.slot] ?? "--s1";
     const r = ratingOf(row);
-    const keep = ratio(id, FIELD.subs, FIELD.lifeSubs);
-    const conv = ratio(id, FIELD.subs, FIELD.views);
+    const foot = METRIC_LIST.filter((m) => m !== metric);
+    const pillRow = pills(id);
 
     const el = document.createElement("article");
     el.className = "card";
@@ -1796,25 +1888,21 @@ function renderCards() {
                 aria-label="Open ${mod.short} on its own" title="Open ${mod.short} on its own">›</button>
       </div>
       <div class="card-value-row">
-        <span class="card-value">${fmt(row[FIELD.subs])}</span>
-        <span class="card-value-label">subscribers</span>
+        <span class="card-value">${fmt(row[metric.field])}</span>
+        <span class="card-value-label">${metric.noun}</span>
       </div>
       <span class="delta" data-dir="flat"></span>
       <div class="spark"></div>
       <div class="foot">
-        <div>Favourites<b>${fmt(row[FIELD.favs])}</b></div>
-        <div>Views<b>${fmt(row[FIELD.views])}</b></div>
+        ${foot.map((m) => `<div>${m.label}<b>${fmt(row[m.field])}</b></div>`).join("")}
         <div>Rating<b>${
           r && r.total ? `${Math.round(r.pct * 100)}%` : "<span class='hint'>—</span>"
         }</b></div>
       </div>
-      <div class="foot2">
-        ${calPill("Keep", keep, calKeep, "Subscribers still holding, out of everyone who ever subscribed")}
-        ${calPill("Conv", conv, calConv, "Subscribers per page view")}
-      </div>`;
+      ${pillRow ? `<div class="foot2">${pillRow}</div>` : ""}`;
 
     setDelta(el.querySelector(".delta"),
-      was ? row[FIELD.subs] - was[FIELD.subs] : null, windowLabel());
+      was ? row[metric.field] - was[metric.field] : null, windowLabel());
     cards.appendChild(el);
 
     const host = el.querySelector(".spark");
@@ -1828,7 +1916,7 @@ function renderCards() {
         ? () => sparkflow(host, flow(id, from, nowSec, sec), colorVar, sec, opts)
         : () => sparkbars(host, velocity(id, from, nowSec, sec), colorVar, sec, opts)]);
     } else {
-      const all = rowsLive(id).map((p) => [p[0], p[FIELD.subs]]);
+      const all = rowsLive(id).map((p) => [p[0], p[metric.field]]);
       const pts = all.filter((p) => p[0] >= cutoff);
       pending.push([host, () => sparkline(host, pts.length >= 2 ? pts : all, colorVar, { label: mod.short, rug, id })]);
     }
@@ -1837,54 +1925,77 @@ function renderCards() {
   for (const [, draw] of pending) draw();
 }
 
+const signed = (n) => (n == null ? "—" : n === 0 ? "0" : (n > 0 ? "+" : "−") + nf.format(Math.abs(n)));
+
+// Every number in plain text, so the columns are literal: the active metric's
+// own column sits first and the derived columns beside it read off the same
+// metric, which is what keeps a header from naming one thing and totalling
+// another. The two stocks the chart isn't showing keep their own columns, so
+// nothing on the page goes missing when the metric changes.
 function renderTable() {
   const tbody = document.querySelector("#table tbody");
   const tfoot = document.querySelector("#table tfoot");
-  document.getElementById("th-change").textContent = `Change ${windowLabel()}`;
-  document.getElementById("th-left").textContent = `Left ${windowLabel()}`;
-  tbody.innerHTML = "";
+  const active = effSort();
+  const cm = churnMetric();
+  const others = METRIC_LIST.filter((m) => m !== metric);
 
+  const th = (label, key, help) => {
+    if (!key) return `<th scope="col">${label}</th>`;
+    return `<th scope="col" aria-sort="${
+      key !== active.metric ? "none" : active.dir === "asc" ? "ascending" : "descending"}">` +
+      `<button type="button" class="th-sort" data-metric="${key}"${
+        help ? ` title="${help}"` : ""}>${label}</button></th>`;
+  };
+
+  document.querySelector("#table thead tr").innerHTML =
+    `<th scope="col">Mod</th>` +
+    th(metric.label, metric.key) +
+    th(`Change ${windowLabel()}`, "movers") +
+    th(`${cm.lostLabel} ${windowLabel()}`, "left", `Everyone who ${cm.gained} in the window, minus what stuck`) +
+    others.map((m) => th(m.label, m.key)).join("") +
+    `<th scope="col">Rating</th><th scope="col">Votes</th>` +
+    th(`Lifetime ${metric.noun}`, null) +
+    th("Keep %", "keep", keepHelp()) +
+    th("Conv %", "conv", convHelp());
+
+  tbody.innerHTML = "";
   for (const id of sortedIds()) {
     const mod = data.mods[id], row = latest(id), was = baseline(id);
     if (!mod || !row) continue;
-    const d = was ? row[FIELD.subs] - was[FIELD.subs] : null;
+    const c = churnOf(id, cm);
     const r = ratingOf(row);
-    const c = churnOf(id);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><span class="name-cell"><span class="swatch" style="background:var(${SLOT_VAR[mod.slot] ?? "--s1"})"></span>${mod.short}</span></td>
-      <td>${nf.format(row[FIELD.subs])}</td>
-      <td>${d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "−") + nf.format(Math.abs(d))}</td>
+      <td>${nf.format(row[metric.field])}</td>
+      <td>${signed(was ? row[metric.field] - was[metric.field] : null)}</td>
       <td>${c == null ? "—" : c.lost === 0 ? "0" : "−" + nf.format(c.lost)}</td>
-      <td>${nf.format(row[FIELD.favs])}</td>
-      <td>${nf.format(row[FIELD.views])}</td>
+      ${others.map((m) => `<td>${nf.format(row[m.field])}</td>`).join("")}
       <td>${r && r.total ? Math.round(r.pct * 100) + "%" : "—"}</td>
       <td>${r ? `${r.up} / ${r.down}` : "—"}</td>
-      <td>${nf.format(row[FIELD.lifeSubs])}</td>
-      <td>${pct(ratio(id, FIELD.subs, FIELD.lifeSubs))}</td>
-      <td>${pct(ratio(id, FIELD.subs, FIELD.views))}</td>`;
+      <td>${metric.life ? nf.format(row[metric.life]) : "—"}</td>
+      <td>${pct(keepOf(id))}</td>
+      <td>${pct(convOf(id))}</td>`;
     tbody.appendChild(tr);
   }
 
   // A totals row under a single row is just that row again.
   if (focused()) { tfoot.innerHTML = ""; return; }
 
-  const dSubs = totalDelta(FIELD.subs);
-  const churn = churnWindow();
-  const subs = totalNow(FIELD.subs);
-  const lifeSubs = totalNow(FIELD.lifeSubs);
+  const churn = churnWindow(cm);
+  const now = totalNow(metric.field);
+  const life = metric.life ? totalNow(metric.life) : null;
   const views = totalNow(FIELD.views);
   tfoot.innerHTML = `<tr>
     <td>Total</td>
-    <td>${fmt(subs)}</td>
-    <td>${dSubs == null ? "—" : dSubs === 0 ? "0" : (dSubs > 0 ? "+" : "−") + nf.format(Math.abs(dSubs))}</td>
+    <td>${fmt(now)}</td>
+    <td>${signed(totalDelta(metric.field))}</td>
     <td>${churn == null ? "—" : churn.lost === 0 ? "0" : "−" + nf.format(churn.lost)}</td>
-    <td>${fmt(totalNow(FIELD.favs))}</td>
-    <td>${fmt(views)}</td>
+    ${others.map((m) => `<td>${fmt(totalNow(m.field))}</td>`).join("")}
     <td></td><td></td>
-    <td>${fmt(lifeSubs)}</td>
-    <td>${pct(subs != null && lifeSubs ? subs / lifeSubs : null)}</td>
-    <td>${pct(subs != null && views ? subs / views : null)}</td>
+    <td>${fmt(life)}</td>
+    <td>${pct(now != null && life ? now / life : null)}</td>
+    <td>${pct(metric !== METRICS.views && now != null && views ? now / views : null)}</td>
   </tr>`;
 }
 
@@ -1961,6 +2072,11 @@ async function loadLive() {
 
 /* ---------- wiring ---------- */
 
+document.getElementById("metric").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (btn) setMetric(btn.dataset.metric);
+});
+
 document.getElementById("range").addEventListener("click", (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
@@ -2007,11 +2123,11 @@ document.getElementById("crumb-back").addEventListener("click", () => setFocus(n
 // setFocus.
 addEventListener("hashchange", () => { focusId = readFocus(); render(); });
 
+// Options are built in syncControls: two labels move with the metric, and two
+// options drop out under a metric with no ratio behind them.
 const sortSelect = document.getElementById("sort");
-sortSelect.innerHTML = Object.entries(SORTS)
-  .map(([k, s]) => `<option value="${k}">${s.label}</option>`).join("");
 sortSelect.addEventListener("change", () => setSort(sortSelect.value, false));
-document.getElementById("sortdir").addEventListener("click", () => setSort(sort.metric, true));
+document.getElementById("sortdir").addEventListener("click", () => setSort(effSort().metric, true));
 
 document.querySelector("#table thead").addEventListener("click", (e) => {
   const btn = e.target.closest(".th-sort");
