@@ -29,13 +29,100 @@ const AUDIT_BRANCH = "audit-data";
 // Every tracked mod belongs to the same account, so the comment endpoint's owner
 // segment is one constant (resolved once from vanity /id/nick354).
 const OWNER = "76561198042022681";
+// A comment is the mod author's if its profile link is the owner's, in either the
+// numeric or vanity form Steam may render.
+const OWNER_URL_FRAGMENTS = [`/profiles/${OWNER}`, "/id/nick354"];
 const LLAMA = "http://127.0.0.1:8080/v1/chat/completions";
 const LLAMA_MODELS = "http://127.0.0.1:8080/v1/models";
 const START_HINT = "start llama-server via C:\\Users\\Nick\\AI\\START.bat first";
 
+// How many mods are triaged at once. Set to 1: this GPU is already compute-bound
+// on a single request, so batching two sequences roughly halved each one's speed
+// and the ~2× overlap only broke even (worse, once draft-mtp speculation lost its
+// spare compute). The pool machinery stays so this is a one-line re-enable — but
+// it only pays off on hardware with idle capacity, and MUST stay ≤ llama-server's
+// -np in START.bat or the extra requests just queue on the server.
+const CONCURRENCY = 1;
+
+// `--no-think` disables the model's chain-of-thought. On a compute-bound GPU the
+// CoT is the bulk of the tokens generated per mod, so dropping it is the only
+// lever that actually shortens the work rather than reshuffling it. Safe-ish here
+// because reconcileStatus already re-judges resolution in code — the reasoning's
+// main product is second-guessed anyway. Whether clustering quality holds is the
+// open question, so keep it a flag and diff the output before trusting it.
+const THINK = !process.argv.includes("--no-think");
+
 const modUrl = (id) => `https://steamcommunity.com/sharedfiles/filedetails/?id=${id}`;
 
 const now = () => Math.floor(Date.now() / 1000);
+
+// ---- live console ---------------------------------------------------------
+// Mods run concurrently, so a single \r status line can't work — two slots would
+// fight over one row. The board owns the bottom H rows of the terminal (H = pool
+// width): each in-flight slot is one row redrawn in place, while completed mods
+// scroll up as permanent lines above it. Cursor invariant: it always rests at
+// column 0 on the line directly below the board. When stdout is redirected
+// (piped, CI) the board is silent and only the permanent lines print.
+
+const isTTY = process.stdout.isTTY;
+const SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+let spinI = 0;
+const spin = () => SPIN[spinI++ % SPIN.length];
+
+// Trim a live row to the terminal width so it can't wrap — a wrapped row spans
+// two physical lines and throws off the cursor-up count the board relies on. SGR
+// escapes are copied through at zero width, and a reset is appended so a clipped
+// row never leaves colour bleeding into the next.
+const clip = (s) => {
+  const cols = (process.stdout.columns || 120) - 1;
+  let vis = 0;
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\x1b") {
+      const j = s.indexOf("m", i);
+      if (j >= 0) { out += s.slice(i, j + 1); i = j; continue; }
+    }
+    if (vis >= cols) break;
+    out += s[i];
+    vis++;
+  }
+  return `${out}\x1b[0m`;
+};
+
+// \x1b[2K clears a row; \x1b[{n}A moves the cursor up n rows; \x1b[1A up one.
+function makeBoard(height) {
+  const rows = Array(height).fill("");
+  let drawn = false;
+  const paint = () => {
+    for (let i = 0; i < height; i++) process.stdout.write(`\x1b[2K${rows[i]}\n`);
+  };
+  return {
+    // Set slot k's live row and repaint the board where it stands.
+    set(k, text) {
+      if (!isTTY) return;
+      rows[k] = clip(text);
+      if (!drawn) { paint(); drawn = true; }
+      else { process.stdout.write(`\x1b[${height}A\r`); paint(); }
+    },
+    // Blank a drained slot's row (worker has no more mods to run).
+    clear(k) { this.set(k, ""); },
+    // Emit a permanent line above the board: erase the board upward, print the
+    // line where its top row was, then repaint the board one row lower.
+    log(text) {
+      if (!isTTY) { console.log(text.trim()); return; }
+      if (!drawn) { process.stdout.write(`${text}\n`); return; }
+      for (let i = 0; i < height; i++) process.stdout.write("\x1b[1A\x1b[2K");
+      process.stdout.write(`${text}\n`);
+      paint();
+    },
+    // Erase the board region entirely at end of run.
+    close() {
+      if (!isTTY || !drawn) return;
+      for (let i = 0; i < height; i++) process.stdout.write("\x1b[1A\x1b[2K");
+      drawn = false;
+    },
+  };
+}
 
 // ---- Step 0: preflight ---------------------------------------------------
 
@@ -87,8 +174,9 @@ function parseComments(html, url) {
       block.match(/commentthread_author_link[^>]*>[\s\S]*?<bdi>([\s\S]*?)<\/bdi>/i)?.[1] ?? "",
     ) || "Unknown";
     const date = Number(block.match(/commentthread_comment_timestamp[^>]*data-timestamp="(\d+)"/i)?.[1] ?? 0);
+    const isOwner = OWNER_URL_FRAGMENTS.some((f) => authorUrl.includes(f));
 
-    out.push({ id, author, authorUrl, date, text, permalink: `${url}#c${id}` });
+    out.push({ id, author, authorUrl, date, text, isOwner, permalink: `${url}#c${id}` });
   }
   return out;
 }
@@ -122,7 +210,14 @@ const SYSTEM_PROMPT =
   "the same thing into ONE issue. Drop pure praise/thanks and off-topic chatter. " +
   "`question` = a user asking whether/how the mod does something (signals a missing " +
   "feature or a description gap). Every issue must cite the `sourceCommentIds` it " +
-  "came from.";
+  "came from.\n\n" +
+  "Also judge whether each issue is resolved, and be conservative — default to " +
+  "`open`. Use `resolved` ONLY when a comment tagged `(MOD AUTHOR)` says the issue " +
+  "is fixed, is intended behaviour, or won't be fixed. Use `likely-resolved` ONLY " +
+  "when a non-author user clearly reports it is solved or worked around. When in " +
+  "doubt, `open`. For a non-open issue set `resolvingCommentId` to the id of the " +
+  "comment that establishes resolution and `resolutionNote` to a short reason " +
+  "(e.g. \"owner: fixed in build 42.9\"); leave both empty for `open`.";
 
 // Object root (not a bare array) so the OpenAI-compatible json_schema wrapper is
 // happy; llama-server compiles it to GBNF and the output is guaranteed valid JSON.
@@ -141,12 +236,15 @@ const RESPONSE_FORMAT = {
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["type", "title", "summary", "sourceCommentIds"],
+            required: ["type", "title", "summary", "sourceCommentIds", "status", "resolutionNote", "resolvingCommentId"],
             properties: {
               type: { type: "string", enum: ["bug", "feature", "question", "compat", "other"] },
               title: { type: "string" },
               summary: { type: "string" },
               sourceCommentIds: { type: "array", items: { type: "string" } },
+              status: { type: "string", enum: ["open", "resolved", "likely-resolved"] },
+              resolutionNote: { type: "string" },
+              resolvingCommentId: { type: "string" },
             },
           },
         },
@@ -155,9 +253,13 @@ const RESPONSE_FORMAT = {
   },
 };
 
-async function extractIssues(short, comments) {
+async function extractIssues(short, comments, onTick) {
   const listing = comments
-    .map((c) => `[${c.id}] ${c.author} (${new Date(c.date * 1000).toISOString().slice(0, 10)}): ${c.text}`)
+    .map(
+      (c) =>
+        `[${c.id}] ${c.author}${c.isOwner ? " (MOD AUTHOR)" : ""} ` +
+        `(${new Date(c.date * 1000).toISOString().slice(0, 10)}): ${c.text}`,
+    )
     .join("\n\n");
 
   const body = JSON.stringify({
@@ -166,30 +268,76 @@ async function extractIssues(short, comments) {
       { role: "user", content: `Comments for mod "${short}":\n\n${listing}` },
     ],
     temperature: 0.2,
-    // "low" is the least reasoning the Qwen3.8 template allows ("none" is not a
-    // valid level — it raises). Harmless here: llama-server puts reasoning in a
-    // separate reasoning_content channel, so response_format still constrains
-    // message.content to clean JSON regardless.
-    chat_template_kwargs: { reasoning_effort: "low" },
+    // Thinking on: "low" is the least reasoning the Qwen3.8 template allows
+    // ("none" raises). Off: `enable_thinking: false` is Qwen3's own switch —
+    // llama-server keeps reasoning in a separate reasoning_content channel either
+    // way, so response_format still constrains message.content to clean JSON.
+    chat_template_kwargs: THINK ? { reasoning_effort: "low" } : { enable_thinking: false },
     response_format: RESPONSE_FORMAT,
+    stream: true,
   });
 
-  // The first inference of a run drops the socket while the model warms; a
-  // network throw retries, an HTTP error (e.g. 400 bad request) does not.
-  let res;
+  // The whole attempt — connect and drain — is retried, because the first
+  // inference of a run drops the socket while the model warms, and with streaming
+  // that shows up mid-drain as often as at connect. An HTTP error (e.g. 400) is
+  // marked fatal so it throws straight out instead of retrying a bad request.
   for (let attempt = 1; ; attempt++) {
     try {
-      res = await fetch(LLAMA, { method: "POST", headers: { "content-type": "application/json" }, body });
-      break;
+      const res = await fetch(LLAMA, { method: "POST", headers: { "content-type": "application/json" }, body });
+      if (!res.ok) throw Object.assign(new Error(`llama chat HTTP ${res.status}`), { fatal: true });
+
+      const started = Date.now();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let reason = ""; // the model's chain-of-thought channel (streams first)
+      let content = ""; // the GBNF-constrained JSON answer (streams after)
+      let tokens = 0;
+      let timings = null;
+
+      for await (const chunk of res.body) {
+        buf += decoder.decode(chunk, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
+          let obj;
+          try {
+            obj = JSON.parse(data);
+          } catch {
+            continue; // a split SSE frame; the rest arrives in the next chunk
+          }
+          if (obj.timings) timings = obj.timings;
+          const delta = obj.choices?.[0]?.delta ?? {};
+          if (delta.reasoning_content) { reason += delta.reasoning_content; tokens++; }
+          if (delta.content) { content += delta.content; tokens++; }
+
+          const elapsed = (Date.now() - started) / 1000;
+          const src = content || reason; // once the answer starts, show it, not the thinking
+          onTick?.({
+            phase: content ? "writing" : "thinking",
+            tokens,
+            tps: tokens / Math.max(elapsed, 0.001),
+            elapsed,
+            tail: src.replace(/\s+/g, " ").slice(-48),
+          });
+        }
+      }
+
+      const elapsed = (Date.now() - started) / 1000;
+      return {
+        issues: JSON.parse(content || "{}").issues ?? [],
+        tokens: timings?.predicted_n ?? tokens,
+        tps: timings?.predicted_per_second ?? tokens / Math.max(elapsed, 0.001),
+        elapsed,
+      };
     } catch (err) {
-      if (attempt >= 3) throw err;
+      if (err.fatal || attempt >= 3) throw err;
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
-  if (!res.ok) throw new Error(`llama chat HTTP ${res.status}`);
-
-  const content = (await res.json())?.choices?.[0]?.message?.content ?? "{}";
-  return JSON.parse(content).issues ?? [];
 }
 
 // ---- Step 3: assemble + reconcile ----------------------------------------
@@ -226,6 +374,29 @@ async function loadPrior() {
   }
 }
 
+// Resolution is sticky: the local model re-judges every run, so a bare open/resolved
+// flip is noise. Once prior is resolved/likely we keep it — only a NON-OWNER comment
+// dated after the fix reopens (someone still hitting it; the author's own follow-up
+// doesn't count). Upgrades (likely-resolved → resolved) are allowed, downgrades are
+// not. A resolution the model can't date is distrusted back to `open`.
+function reconcileStatus(issue, byId, match, sourceComments) {
+  let status = issue.status ?? "open";
+  const resolvedDate = status !== "open" ? byId.get(String(issue.resolvingCommentId))?.date ?? 0 : 0;
+  let note = status !== "open" ? issue.resolutionNote ?? "" : "";
+  if (status !== "open" && !resolvedDate) (status = "open"), (note = "");
+
+  const prior = match?.status ?? "open";
+  if (prior === "open") return { status, resolutionNote: note, resolvedDate };
+
+  if (sourceComments.some((c) => c.date > (match.resolvedDate ?? 0) && !c.isOwner)) {
+    return { status: "open", resolutionNote: "", resolvedDate: 0 };
+  }
+  if (prior === "likely-resolved" && status === "resolved") {
+    return { status: "resolved", resolutionNote: note, resolvedDate };
+  }
+  return { status: prior, resolutionNote: match.resolutionNote ?? "", resolvedDate: match.resolvedDate ?? 0 };
+}
+
 // ---- Step 4: publish -----------------------------------------------------
 
 function git(args, env) {
@@ -249,7 +420,9 @@ async function publish() {
     const tree = (await git(["write-tree"], env)).trim();
     const stamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const commit = (await git(["commit-tree", tree, "-m", `audit: ${stamp} UTC`])).trim();
-    await git(["push", "--force", "origin", `${commit}:${AUDIT_BRANCH}`]);
+    // Fully-qualified dst: git won't create a branch from a bare name, so the
+    // first push (before audit-data exists on the remote) needs refs/heads/.
+    await git(["push", "--force", "origin", `${commit}:refs/heads/${AUDIT_BRANCH}`]);
     console.log(`published data/issues.js → ${AUDIT_BRANCH}`);
   } finally {
     await rm(tmpIndex, { force: true });
@@ -260,6 +433,7 @@ async function publish() {
 
 async function main() {
   await preflight();
+  console.log(`reasoning: ${THINK ? "on (low)" : "off"}`);
 
   const config = JSON.parse(await readFile(resolve(ROOT, "mods.json"), "utf8"));
   const prior = await loadPrior();
@@ -267,37 +441,60 @@ async function main() {
 
   const modsMap = {};
   const issues = [];
+  const total = config.mods.length;
+  const board = makeBoard(CONCURRENCY);
 
-  for (const mod of config.mods) {
+  let runTokens = 0;
+  let runElapsed = 0; // summed model time across mods — with overlap it exceeds wall
+
+  // One mod end to end on a given board slot. Concurrency-safe: the shared writes
+  // are Map/array mutations between awaits (single-threaded, so atomic), and the
+  // final issues.sort makes assembly order irrelevant.
+  async function processMod(mod, i, slot) {
+    const tag = `[${i + 1}/${total}] ${mod.short}`;
     modsMap[mod.id] = { short: mod.short, slot: mod.slot, url: modUrl(mod.id) };
 
     let comments;
     try {
+      board.set(slot, `${spin()} ${tag}  fetching comments…`);
       comments = await fetchComments(mod.id);
     } catch (err) {
-      console.warn(`${mod.short}: comment fetch failed (${err.message}) — skipped`);
-      continue;
+      board.log(`${tag} ✗ comment fetch failed (${err.message}) — skipped`);
+      return;
     }
     if (!comments.length) {
-      console.log(`${mod.short}: no comments`);
-      continue;
+      board.log(`${tag} (no comments)`);
+      return;
     }
 
     const byId = new Map(comments.map((c) => [c.id, c]));
 
-    let raw;
+    let result;
     try {
-      raw = await extractIssues(mod.short, comments);
+      result = await extractIssues(mod.short, comments, (t) =>
+        board.set(
+          slot,
+          `${spin()} ${tag}  ${t.phase.padEnd(8)} ${comments.length}c · ${t.tokens} tok · ` +
+            `${t.tps.toFixed(0)} tok/s · ${t.elapsed.toFixed(1)}s  \x1b[2m${t.tail}\x1b[0m`,
+        ),
+      );
     } catch (err) {
-      console.warn(`${mod.short}: LLM extraction failed (${err.message}) — skipped`);
-      continue;
+      board.log(`${tag} ✗ LLM extraction failed (${err.message}) — skipped`);
+      return;
     }
+    const raw = result.issues;
+    runTokens += result.tokens;
+    runElapsed += result.elapsed;
+    board.log(
+      `${tag} → ${raw.length} issue${raw.length === 1 ? "" : "s"} · ${comments.length} comments · ` +
+        `${result.tokens} tok · ${result.tps.toFixed(0)} tok/s · ${result.elapsed.toFixed(1)}s`,
+    );
 
     for (const issue of raw) {
       const sourceComments = (issue.sourceCommentIds ?? [])
         .map((cid) => byId.get(String(cid)))
         .filter(Boolean)
-        .map((c) => ({ id: c.id, author: c.author, text: c.text, permalink: c.permalink, date: c.date }));
+        .map((c) => ({ id: c.id, author: c.author, text: c.text, permalink: c.permalink, date: c.date, isOwner: c.isOwner }));
       if (!sourceComments.length) continue; // cited nothing real — drop it
 
       const dates = sourceComments.map((c) => c.date).filter(Boolean);
@@ -305,6 +502,7 @@ async function main() {
       const derivedFirst = dates.length ? Math.min(...dates) : 0;
 
       const match = sourceComments.map((c) => priorByComment.get(c.id)).find(Boolean);
+      const { status, resolutionNote, resolvedDate } = reconcileStatus(issue, byId, match, sourceComments);
 
       issues.push({
         id: match?.id ?? randomUUID(),
@@ -317,10 +515,34 @@ async function main() {
         firstSeen: match?.firstSeen ?? derivedFirst,
         lastSeen,
         isNew: !match,
+        status,
+        resolutionNote,
+        resolvedDate,
       });
     }
-    console.log(`${mod.short}: ${comments.length} comments → ${raw.length} issues`);
   }
+
+  // Fixed pool of CONCURRENCY workers pulling mods off a shared cursor; each owns
+  // one board slot for its lifetime and blanks it once the queue is drained.
+  const wall0 = Date.now();
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, total) || 1 }, (_, slot) =>
+      (async () => {
+        for (;;) {
+          const i = next++;
+          if (i >= total) { board.clear(slot); return; }
+          await processMod(config.mods[i], i, slot);
+        }
+      })(),
+    ),
+  );
+  board.close();
+  const wall = (Date.now() - wall0) / 1000;
+
+  console.log(
+    `${total} mods · ${runTokens} tok · ${runElapsed.toFixed(1)}s model · ${wall.toFixed(1)}s wall`,
+  );
 
   issues.sort((a, b) => b.reportCount - a.reportCount);
 

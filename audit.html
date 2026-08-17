@@ -184,6 +184,10 @@ button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color:
   color: var(--s1); border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent);
   background: color-mix(in srgb, var(--s1) 10%, transparent);
 }
+/* Demoted rows (resolved / likely-fixed / stale): dimmed, labelled by a muted pill. */
+.pn-item.dim { opacity: 0.55; }
+.pn-item.dim:hover { opacity: 1; }
+.pill.reason { flex: none; text-transform: none; }
 
 /* ---- Issue modal ---- */
 .overlay {
@@ -325,15 +329,39 @@ const el = (tag, props = {}, ...kids) => {
 
 const TYPE_VAR = { bug: "--down", feature: "--s3", question: "--s4", compat: "--s5", other: "--muted" };
 
+// An open issue nobody has touched in this long is demoted to "stale" — derived at
+// render (never stored), since it drifts across the threshold on its own each day.
+const STALE_SECS = 60 * 60 * 24 * 182;
+
 let activeType = "all";
+let showResolved = false;
 
 const reports = (n) => `${n} ${n === 1 ? "report" : "reports"}`;
+
+// "open" (live), "dim" (likely-fixed or stale — greyed but visible), or "resolved"
+// (owner-confirmed — hidden unless showResolved).
+function tierOf(issue) {
+  if (issue.status === "resolved") return "resolved";
+  if (issue.status === "likely-resolved") return "dim";
+  if ((issue.status ?? "open") === "open" && issue.lastSeen &&
+      Math.floor(Date.now() / 1000) - issue.lastSeen > STALE_SECS) return "dim";
+  return "open";
+}
+
+// The muted pill text a demoted issue carries, or null for a live one.
+function reasonLabel(issue) {
+  if (issue.status === "resolved") return "resolved";
+  if (issue.status === "likely-resolved") return "likely fixed";
+  return tierOf(issue) === "dim" ? "stale" : null;
+}
 
 function typePill(type) {
   const p = el("span", { className: "pill", textContent: type });
   p.dataset.type = type;
   return p;
 }
+
+const reasonPill = (text) => el("span", { className: "pill reason", textContent: text });
 
 // ---- issue modal ----
 const overlay = document.getElementById("overlay");
@@ -344,7 +372,9 @@ function openModal(issue) {
   lastFocus = document.activeElement;
 
   const drow = el("div", { className: "drow" }, typePill(issue.type));
-  if (issue.isNew) drow.append(el("span", { className: "badge-new", textContent: "NEW" }));
+  const reason = reasonLabel(issue);
+  if (reason) drow.append(reasonPill(reason));
+  else if (issue.isNew) drow.append(el("span", { className: "badge-new", textContent: "NEW" }));
   drow.append(el("span", { className: "chip", textContent: reports(issue.reportCount) }));
 
   const close = el("button", {
@@ -360,6 +390,9 @@ function openModal(issue) {
       textContent: `First reported ${absTime(issue.firstSeen)} · latest ${absTime(issue.lastSeen)}`,
     }),
   );
+  if (issue.resolutionNote) {
+    head.append(el("div", { className: "dmeta", textContent: `${reason ?? "resolved"} · ${issue.resolutionNote}` }));
+  }
 
   const sources = el("div", { className: "sources" });
   for (const c of issue.sourceComments) {
@@ -397,13 +430,16 @@ function issueRow(issue) {
   const row = el("button", { className: "pn-item", type: "button" });
   row.style.setProperty("--tc", `var(${TYPE_VAR[issue.type] ?? "--muted"})`);
   row.addEventListener("click", () => openModal(issue));
+  if (tierOf(issue) !== "open") row.classList.add("dim");
 
   row.append(typePill(issue.type));
   row.append(el("div", { className: "body" },
     el("div", { className: "title", textContent: issue.title }),
     el("div", { className: "meta", textContent: `${reports(issue.reportCount)} · latest ${relTime(issue.lastSeen)}` }),
   ));
-  if (issue.isNew) row.append(el("span", { className: "badge-new", textContent: "NEW" }));
+  const reason = reasonLabel(issue);
+  if (reason) row.append(reasonPill(reason));
+  else if (issue.isNew) row.append(el("span", { className: "badge-new", textContent: "NEW" }));
   return row;
 }
 
@@ -420,11 +456,18 @@ function render() {
     return;
   }
 
-  const shown = data.issues.filter((i) => activeType === "all" || i.type === activeType);
+  // open first, then dim, then resolved; stable sort keeps the reportCount order the
+  // script already applied within each tier.
+  const rank = (i) => ({ open: 0, dim: 1, resolved: 2 })[tierOf(i)];
+  const shown = data.issues
+    .filter((i) => activeType === "all" || i.type === activeType)
+    .filter((i) => showResolved || tierOf(i) !== "resolved");
 
   for (const [id, mod] of Object.entries(data.mods)) {
-    const modIssues = shown.filter((i) => i.mod === id);
+    const modIssues = shown.filter((i) => i.mod === id).sort((a, b) => rank(a) - rank(b));
     if (!modIssues.length) continue;
+
+    const actionable = modIssues.filter((i) => tierOf(i) !== "resolved").length;
 
     const panel = el("div", { className: "pn" });
     panel.style.setProperty("--accent", `var(${SLOT_VAR[mod.slot] ?? "--s1"})`);
@@ -432,7 +475,7 @@ function render() {
     panel.append(el("div", { className: "pn-head" },
       el("span", { className: "dot" }),
       el("span", { className: "name", textContent: mod.short }),
-      el("span", { className: "chip", textContent: `${modIssues.length} ${modIssues.length === 1 ? "issue" : "issues"}` }),
+      el("span", { className: "chip", textContent: `${actionable} ${actionable === 1 ? "issue" : "issues"}` }),
       el("a", { className: "view", href: mod.url, target: "_blank", rel: "noopener", textContent: "Workshop ↗" }),
     ));
 
@@ -471,6 +514,19 @@ function buildFilter() {
 
   group.append(mk("all", "All"));
   for (const t of TYPES) if (counts[t]) group.append(mk(t, t[0].toUpperCase() + t.slice(1)));
+
+  const resolvedCount = data.issues.filter((i) => i.status === "resolved").length;
+  if (resolvedCount) {
+    const t = el("button", { type: "button", textContent: `Show resolved (${resolvedCount})` });
+    t.style.marginLeft = "auto";
+    t.setAttribute("aria-pressed", String(showResolved));
+    t.addEventListener("click", () => {
+      showResolved = !showResolved;
+      t.setAttribute("aria-pressed", String(showResolved));
+      render();
+    });
+    filters.append(t);
+  }
 }
 
 // ---- theme toggle (copied from index.html) ----
