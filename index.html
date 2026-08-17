@@ -255,7 +255,6 @@ h2.section {
 .spark-note { font-size: 10.5px; fill: var(--muted); }
 .tip {
   position: absolute; pointer-events: none; opacity: 0;
-  transform: translate(-50%, -100%);
   background: var(--surface); border: 1px solid var(--border);
   box-shadow: var(--shadow); border-radius: 8px;
   padding: 6px 9px; font-size: 12px; line-height: 1.35; white-space: nowrap;
@@ -1046,7 +1045,6 @@ function rugLabel(t, name, id) {
 function attachProbe(host, svg, hits, format, opts = {}) {
   if (!hits.length) return;
   const NS = "http://www.w3.org/2000/svg";
-  const width = Number(svg.getAttribute("width"));
   const height = Number(svg.getAttribute("height"));
 
   const cross = document.createElementNS(NS, "line");
@@ -1091,9 +1089,12 @@ function attachProbe(host, svg, hits, format, opts = {}) {
     }
     tip.innerHTML = format(h);
     tip.style.opacity = "1";
-    const halfW = tip.offsetWidth / 2 + 2;
-    tip.style.left = `${Math.min(Math.max(h.x, halfW), Math.max(width - halfW, halfW))}px`;
-    tip.style.top = `${Math.max(h.y - 8, tip.offsetHeight + 2)}px`;
+    // Anchor to the data point: centre on the point and flow upward from it.
+    // Left unclamped so it can overflow the short .spark box into the card
+    // above, keeping it clear of a cursor tracking the line.
+    const VGAP = 10;
+    tip.style.left = `${h.x - tip.offsetWidth / 2}px`;
+    tip.style.top = `${h.y - VGAP - tip.offsetHeight}px`;
   };
   const clear = () => {
     cross.setAttribute("opacity", "0");

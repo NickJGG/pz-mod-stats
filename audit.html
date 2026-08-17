@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Comment Audit</title>
+<meta name="description" content="Local LLM triage of Project Zomboid Workshop mod comments into issues.">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M6 22 L13 14 L19 18 L26 9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+<style>
+/* ---- Tokens (copied verbatim from index.html) --------------------------
+   Light is the base; the dark values are declared twice on purpose — once for
+   the OS setting, once for the in-page toggle — so the toggle wins both ways. */
+:root {
+  color-scheme: light;
+  --plane:      #f9f9f7;
+  --surface:    #fcfcfb;
+  --ink:        #0b0b0b;
+  --ink-2:      #52514e;
+  --muted:      #898781;
+  --grid:       #e1e0d9;
+  --border:     rgba(11,11,11,0.10);
+  --up:         #006300;
+  --down:       #d03b3b;
+  --s1:         #2a78d6;
+  --s2:         #eb6834;
+  --s3:         #1baf7a;
+  --s4:         #eda100;
+  --s5:         #7d57d1;
+  --s6:         #c25596;
+  --s7:         #0f93a6;
+  --shadow:     0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --plane:   #0d0d0d;
+    --surface: #1a1a19;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --border:  rgba(255,255,255,0.10);
+    --up:      #0ca30c;
+    --down:    #e66767;
+    --s1:      #3987e5;
+    --s2:      #d95926;
+    --s3:      #199e70;
+    --s4:      #c98500;
+    --s5:      #9370e8;
+    --s6:      #b04f8b;
+    --s7:      #17a5ba;
+    --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane:   #0d0d0d;
+  --surface: #1a1a19;
+  --ink:     #ffffff;
+  --ink-2:   #c3c2b7;
+  --muted:   #898781;
+  --grid:    #2c2c2a;
+  --border:  rgba(255,255,255,0.10);
+  --up:      #0ca30c;
+  --down:    #e66767;
+  --s1:      #3987e5;
+  --s2:      #d95926;
+  --s3:      #199e70;
+  --s4:      #c98500;
+  --s5:      #9370e8;
+  --s6:      #b04f8b;
+  --s7:      #17a5ba;
+  --shadow:  0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  padding: 24px 20px 64px;
+  background: var(--plane);
+  color: var(--ink);
+  font: 400 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1080px; margin: 0 auto; }
+
+/* ---- Header (mirrors index.html) ---- */
+header {
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 8px 16px; margin-bottom: 28px;
+}
+h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.status {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2);
+}
+
+button {
+  font: inherit; font-size: 13px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: 5px 11px; cursor: pointer;
+  min-height: 30px;
+}
+button:hover { color: var(--ink); }
+button[aria-pressed="true"] { color: var(--ink); font-weight: 600; border-color: var(--muted); }
+:is(button, a, summary, select):focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* ---- Type filter ---- */
+.filters { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+.seg { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ---- Chip (report / issue counts) ---- */
+.chip {
+  font-size: 11.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Mod panels ----
+   --accent is the mod's slot colour; --tc is an issue's type colour. */
+.pn {
+  border: 1px solid var(--border); border-radius: 15px; overflow: hidden;
+  box-shadow: var(--shadow); background: var(--surface); margin-bottom: 20px;
+}
+.pn-head {
+  display: flex; align-items: center; gap: 11px; padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 20%, var(--surface)),
+    color-mix(in srgb, var(--accent) 8%, var(--surface)));
+}
+.pn-head .dot {
+  width: 22px; height: 22px; border-radius: 7px; flex: none; background: var(--accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.pn-head .name { font-weight: 650; font-size: 15.5px; letter-spacing: -0.01em; }
+.pn-head .chip { margin-left: auto; }
+.pn-head .view { font-size: 12px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.pn-head .view:hover { color: var(--ink); text-decoration: underline; }
+
+.pn-item {
+  display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  font: inherit; color: inherit; cursor: pointer;
+  padding: 12px 16px 12px 14px; background: none; border-radius: 0;
+  border: none; border-top: 1px solid var(--grid); border-left: 3px solid var(--tc, var(--muted));
+}
+.pn-head + .pn-item { border-top: none; }
+.pn-item:hover { background: color-mix(in srgb, var(--tc) 6%, transparent); }
+.pn-item .pill { flex: none; width: 76px; justify-content: center; }
+.pn-item .body { flex: 1 1 auto; min-width: 0; }
+.pn-item .title {
+  font-weight: 600; font-size: 14.5px; letter-spacing: -0.005em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pn-item .meta { font-size: 12px; color: var(--muted); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.pn-item .badge-new { flex: none; }
+
+/* ---- Pills / badges (the color-mix tint idiom from index.html) ---- */
+.pill {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 600;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  color: var(--muted); text-transform: capitalize;
+}
+.pill[data-type="bug"]      { --h: var(--down); }
+.pill[data-type="feature"]  { --h: var(--s3); }
+.pill[data-type="question"] { --h: var(--s4); }
+.pill[data-type="compat"]   { --h: var(--s5); }
+.pill[data-type="other"]    { --h: var(--muted); }
+.pill[data-type] {
+  border-color: color-mix(in srgb, var(--h) 34%, transparent);
+  background: color-mix(in srgb, var(--h) 9%, transparent);
+  color: color-mix(in srgb, var(--h) 60%, var(--ink));
+}
+.badge-new {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+  padding: 1px 7px; border-radius: 999px;
+  color: var(--s1); border: 1px solid color-mix(in srgb, var(--s1) 40%, transparent);
+  background: color-mix(in srgb, var(--s1) 10%, transparent);
+}
+
+/* ---- Issue modal ---- */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; display: none; padding: 24px;
+  align-items: center; justify-content: center;
+  background: color-mix(in srgb, #000 48%, transparent);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+.overlay.open { display: flex; }
+.dialog {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  width: 100%; max-width: 620px; max-height: 86vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: pop .16s cubic-bezier(.2,.7,.3,1);
+}
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.dhead { position: relative; padding: 18px 20px 14px; border-bottom: 1px solid var(--grid); }
+.drow { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; padding-right: 34px; }
+.dhead h3 {
+  margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.01em;
+  line-height: 1.3; text-wrap: balance;
+}
+.dmeta { font-size: 12px; color: var(--muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.dclose {
+  position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; min-height: 0;
+  border-radius: 8px; padding: 0; font-size: 15px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.dbody { padding: 16px 20px 20px; overflow-y: auto; }
+.dsum { font-size: 14px; color: var(--ink-2); margin: 0 0 18px; }
+.slabel {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); margin: 0 0 10px;
+}
+
+/* ---- Source comments (inside modal) ---- */
+.sources { display: flex; flex-direction: column; gap: 12px; }
+.src { font-size: 13px; }
+.src-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.src-author { font-weight: 600; font-size: 12.5px; }
+.src-when { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.src-link { margin-left: auto; font-size: 11.5px; color: var(--muted); text-decoration: none; }
+.src-link:hover { color: var(--ink); text-decoration: underline; }
+.src-text { color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.placeholder {
+  background: var(--surface); border: 1px dashed var(--grid);
+  border-radius: 14px; padding: 40px 24px; text-align: center; color: var(--ink-2);
+}
+.placeholder code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  padding: 2px 6px; border-radius: 6px; font-size: 13px;
+}
+.empty { color: var(--muted); font-size: 13.5px; padding: 8px 0; }
+
+footer.page {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--grid);
+  font-size: 12.5px; color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog { animation: none; }
+}
+@media (max-width: 620px) {
+  body { padding: 18px 14px 48px; }
+  .overlay { padding: 12px; }
+  .pn-item .pill { width: auto; }
+  .pn-item .title { white-space: normal; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Comment Audit</h1>
+    <div class="status">
+      <span id="generated"></span>
+      <button id="theme" type="button" title="Switch theme" aria-label="Switch colour theme">Theme</button>
+    </div>
+  </header>
+
+  <div class="filters" id="filters" hidden>
+    <div class="seg" id="type-filter" role="group" aria-label="Filter by type"></div>
+  </div>
+
+  <div id="content"></div>
+
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="d-title">
+    <div class="dialog" id="dialog"></div>
+  </div>
+
+  <footer class="page">
+    Local LLM triage of Steam Workshop mod comments. Generated on this machine by
+    <code>node scripts/audit.mjs</code>; nothing here leaves it.
+  </footer>
+</div>
+
+<script src="data/issues.js"></script>
+<script>
+"use strict";
+
+const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3", 4: "--s4", 5: "--s5", 6: "--s6", 7: "--s7" };
+const TYPES = ["bug", "feature", "question", "compat", "other"];
+
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+function relTime(sec) {
+  if (!sec) return "—";
+  const age = Math.floor(Date.now() / 1000) - sec;
+  if (age < 90) return "just now";
+  for (const [div, unit] of [[86400, "day"], [3600, "hour"], [60, "minute"]]) {
+    if (age >= div) return rtf.format(-Math.round(age / div), unit);
+  }
+  return "just now";
+}
+
+function absTime(sec) {
+  if (!sec) return "—";
+  return new Date(sec * 1000).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+const TYPE_VAR = { bug: "--down", feature: "--s3", question: "--s4", compat: "--s5", other: "--muted" };
+
+let activeType = "all";
+
+const reports = (n) => `${n} ${n === 1 ? "report" : "reports"}`;
+
+function typePill(type) {
+  const p = el("span", { className: "pill", textContent: type });
+  p.dataset.type = type;
+  return p;
+}
+
+// ---- issue modal ----
+const overlay = document.getElementById("overlay");
+const dialog = document.getElementById("dialog");
+let lastFocus = null;
+
+function openModal(issue) {
+  lastFocus = document.activeElement;
+
+  const drow = el("div", { className: "drow" }, typePill(issue.type));
+  if (issue.isNew) drow.append(el("span", { className: "badge-new", textContent: "NEW" }));
+  drow.append(el("span", { className: "chip", textContent: reports(issue.reportCount) }));
+
+  const close = el("button", {
+    className: "dclose", type: "button", textContent: "✕",
+    title: "Close", "aria-label": "Close", onclick: closeModal,
+  });
+
+  const head = el("div", { className: "dhead" },
+    close, drow,
+    el("h3", { id: "d-title", textContent: issue.title }),
+    el("div", {
+      className: "dmeta",
+      textContent: `First reported ${absTime(issue.firstSeen)} · latest ${absTime(issue.lastSeen)}`,
+    }),
+  );
+
+  const sources = el("div", { className: "sources" });
+  for (const c of issue.sourceComments) {
+    const srcHead = el("div", { className: "src-head" },
+      el("span", { className: "src-author", textContent: c.author }),
+      el("span", { className: "src-when", textContent: relTime(c.date) }),
+      el("a", { className: "src-link", href: c.permalink, target: "_blank", rel: "noopener", textContent: "view ↗" }),
+    );
+    sources.append(el("div", { className: "src" }, srcHead, el("div", { className: "src-text", textContent: c.text })));
+  }
+
+  const n = issue.sourceComments.length;
+  const body = el("div", { className: "dbody" },
+    el("p", { className: "dsum", textContent: issue.summary }),
+    el("p", { className: "slabel", textContent: `${n} source ${n === 1 ? "comment" : "comments"}` }),
+    sources,
+  );
+
+  dialog.replaceChildren(head, body);
+  overlay.classList.add("open");
+  close.focus();
+}
+
+function closeModal() {
+  overlay.classList.remove("open");
+  if (lastFocus) lastFocus.focus();
+}
+
+overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && overlay.classList.contains("open")) closeModal();
+});
+
+function issueRow(issue) {
+  const row = el("button", { className: "pn-item", type: "button" });
+  row.style.setProperty("--tc", `var(${TYPE_VAR[issue.type] ?? "--muted"})`);
+  row.addEventListener("click", () => openModal(issue));
+
+  row.append(typePill(issue.type));
+  row.append(el("div", { className: "body" },
+    el("div", { className: "title", textContent: issue.title }),
+    el("div", { className: "meta", textContent: `${reports(issue.reportCount)} · latest ${relTime(issue.lastSeen)}` }),
+  ));
+  if (issue.isNew) row.append(el("span", { className: "badge-new", textContent: "NEW" }));
+  return row;
+}
+
+function render() {
+  const content = document.getElementById("content");
+  content.replaceChildren();
+
+  const data = window.ISSUES;
+  if (!data) {
+    content.append(el("div", { className: "placeholder" },
+      el("p", { textContent: "No report generated yet." }),
+      el("p", {}, "Run ", el("code", { textContent: "node scripts/audit.mjs" }), " locally to build this page."),
+    ));
+    return;
+  }
+
+  const shown = data.issues.filter((i) => activeType === "all" || i.type === activeType);
+
+  for (const [id, mod] of Object.entries(data.mods)) {
+    const modIssues = shown.filter((i) => i.mod === id);
+    if (!modIssues.length) continue;
+
+    const panel = el("div", { className: "pn" });
+    panel.style.setProperty("--accent", `var(${SLOT_VAR[mod.slot] ?? "--s1"})`);
+
+    panel.append(el("div", { className: "pn-head" },
+      el("span", { className: "dot" }),
+      el("span", { className: "name", textContent: mod.short }),
+      el("span", { className: "chip", textContent: `${modIssues.length} ${modIssues.length === 1 ? "issue" : "issues"}` }),
+      el("a", { className: "view", href: mod.url, target: "_blank", rel: "noopener", textContent: "Workshop ↗" }),
+    ));
+
+    modIssues.forEach((i) => panel.append(issueRow(i)));
+    content.append(panel);
+  }
+
+  if (!content.childElementCount) {
+    content.append(el("div", { className: "empty", textContent: "No issues of this type." }));
+  }
+}
+
+function buildFilter() {
+  const data = window.ISSUES;
+  if (!data) return;
+  document.getElementById("generated").textContent = `Generated ${relTime(data.generated)}`;
+
+  const filters = document.getElementById("filters");
+  filters.hidden = false;
+  const group = document.getElementById("type-filter");
+
+  const counts = { all: data.issues.length };
+  for (const t of TYPES) counts[t] = data.issues.filter((i) => i.type === t).length;
+
+  const mk = (key, label) => {
+    const b = el("button", { type: "button", textContent: `${label} (${counts[key]})` });
+    b.setAttribute("aria-pressed", String(key === activeType));
+    b.addEventListener("click", () => {
+      activeType = key;
+      group.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", "true");
+      render();
+    });
+    return b;
+  };
+
+  group.append(mk("all", "All"));
+  for (const t of TYPES) if (counts[t]) group.append(mk(t, t[0].toUpperCase() + t.slice(1)));
+}
+
+// ---- theme toggle (copied from index.html) ----
+document.getElementById("theme").addEventListener("click", () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("theme", next);
+});
+const savedTheme = localStorage.getItem("theme");
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+
+buildFilter();
+render();
+</script>
+</body>
+</html>
