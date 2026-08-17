@@ -1,22 +1,30 @@
 // Fetches each mod's Steam Workshop comments, runs a LOCAL LLM (llama-server) over
-// them to extract JIRA-style issues, reconciles against the previous run, and
-// writes data/issues.js for audit.html to read. Run by hand: node scripts/audit.mjs.
+// them to extract JIRA-style issues, reconciles against the previous run, writes
+// data/issues.js for audit.html, and force-pushes it to the audit-data branch so
+// the deployed page can read it. Run by hand: node scripts/audit.mjs (--no-publish
+// to skip the push).
 //
-// Everything stays on this machine: the model and the generated data never leave
-// it, and data/issues.js is gitignored (data/ already is). Structure mirrors
-// scripts/fetch.mjs — Node built-ins + global fetch only, mods.json as the single
-// source of the mod list, read-old-file → update → write.
+// The model and raw comments stay on this machine; only the finished triage is
+// published. data/issues.js is gitignored (data/ already is), so the push goes to
+// its own orphan branch rather than master. Structure mirrors scripts/fetch.mjs —
+// Node built-ins + global fetch only, mods.json as the single source of the mod
+// list, read-old-file → update → write.
 //
 // Steam sends no CORS headers on the comment endpoint, which is why the fetch has
 // to happen here in Node rather than in the browser.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ISSUES_OUT = resolve(ROOT, "data/issues.js");
+
+// Its own lane, not `stats-data`: the 5-min poller rebuilds that branch from
+// history.json alone and would wipe issues.js. audit.html reads the same name.
+const AUDIT_BRANCH = "audit-data";
 
 // Every tracked mod belongs to the same account, so the comment endpoint's owner
 // segment is one constant (resolved once from vanity /id/nick354).
@@ -218,6 +226,36 @@ async function loadPrior() {
   }
 }
 
+// ---- Step 4: publish -----------------------------------------------------
+
+function git(args, env) {
+  return new Promise((res, rej) => {
+    execFile("git", args, { cwd: ROOT, env: env ?? process.env, windowsHide: true }, (err, stdout, stderr) =>
+      err ? rej(new Error(stderr?.trim() || err.message)) : res(stdout),
+    );
+  });
+}
+
+// Builds a parentless commit holding only data/issues.js and force-pushes it, so
+// the branch is always exactly one commit deep — same shape as the poller's
+// stats-data. Staging goes through a throwaway index (GIT_INDEX_FILE) so HEAD and
+// the real index are never touched: publishing can't disturb work in progress.
+async function publish() {
+  const gitDir = (await git(["rev-parse", "--git-dir"])).trim();
+  const tmpIndex = resolve(ROOT, gitDir, "audit-publish-index");
+  const env = { ...process.env, GIT_INDEX_FILE: tmpIndex };
+  try {
+    await git(["add", "--force", "data/issues.js"], env); // --force: data/ is gitignored
+    const tree = (await git(["write-tree"], env)).trim();
+    const stamp = new Date().toISOString().replace("T", " ").slice(0, 16);
+    const commit = (await git(["commit-tree", tree, "-m", `audit: ${stamp} UTC`])).trim();
+    await git(["push", "--force", "origin", `${commit}:${AUDIT_BRANCH}`]);
+    console.log(`published data/issues.js → ${AUDIT_BRANCH}`);
+  } finally {
+    await rm(tmpIndex, { force: true });
+  }
+}
+
 // ---- main ----------------------------------------------------------------
 
 async function main() {
@@ -290,6 +328,16 @@ async function main() {
   await mkdir(dirname(ISSUES_OUT), { recursive: true });
   await writeFile(ISSUES_OUT, `window.ISSUES = ${JSON.stringify(payload)};\n`);
   console.log(`data/issues.js written — ${issues.length} issues across ${config.mods.length} mods`);
+
+  if (!process.argv.includes("--no-publish")) {
+    // The local file is already written; a failed push loses nothing, so warn
+    // rather than exit — a manual retry or `--no-publish` run still has the data.
+    try {
+      await publish();
+    } catch (err) {
+      console.error(`publish failed (${err.message}) — data/issues.js is written; re-run to retry`);
+    }
+  }
 }
 
 await main();

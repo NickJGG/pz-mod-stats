@@ -280,13 +280,20 @@ footer.page {
 
   <footer class="page">
     Local LLM triage of Steam Workshop mod comments. Generated on this machine by
-    <code>node scripts/audit.mjs</code>; nothing here leaves it.
+    <code>node scripts/audit.mjs</code>; the model and raw comments stay on it —
+    only this finished triage is published.
   </footer>
 </div>
 
-<script src="data/issues.js"></script>
 <script>
 "use strict";
+
+// Published triage lives on the `audit-data` orphan branch, force-pushed by
+// scripts/audit.mjs. Its own lane, not `stats-data` — the 5-min poller rewrites
+// that branch and would wipe issues.js. Mirrors index.html's DATA_REPO.
+const DATA_REPO = "nickjgg/pz-mod-stats";
+const AUDIT_BRANCH = "audit-data";
+const RAW_URL = `https://raw.githubusercontent.com/${DATA_REPO}/${AUDIT_BRANCH}/data/issues.js`;
 
 const SLOT_VAR = { 1: "--s1", 2: "--s2", 3: "--s3", 4: "--s4", 5: "--s5", 6: "--s6", 7: "--s7" };
 const TYPES = ["bug", "feature", "question", "compat", "other"];
@@ -477,8 +484,28 @@ document.getElementById("theme").addEventListener("click", () => {
 const savedTheme = localStorage.getItem("theme");
 if (savedTheme) document.documentElement.dataset.theme = savedTheme;
 
-buildFilter();
-render();
+function loadScript(src) {
+  return new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve(true);
+    s.onerror = () => { s.remove(); resolve(false); };
+    document.head.append(s);
+  });
+}
+
+// A freshly generated local copy wins when present — the maintainer opening the
+// file off disk. The deployed site has no local copy (data/ is gitignored), so
+// it falls through to the published branch.
+async function loadIssues() {
+  if (await loadScript("data/issues.js") && window.ISSUES) return;
+  await loadScript(RAW_URL);
+}
+
+loadIssues().then(() => {
+  buildFilter();
+  render();
+});
 </script>
 </body>
 </html>
