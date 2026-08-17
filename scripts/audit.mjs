@@ -490,6 +490,11 @@ async function main() {
         `${result.tokens} tok · ${result.tps.toFixed(0)} tok/s · ${result.elapsed.toFixed(1)}s`,
     );
 
+    // Build every candidate first, then reconcile identity across the whole mod at
+    // once. A per-issue `.find` can't see that the model split one prior issue into
+    // two this run (both would claim it) or merged two into one — and identity plus
+    // resolved-status ride on the match, so a wrong match hides a live problem.
+    const prepared = [];
     for (const issue of raw) {
       const sourceComments = (issue.sourceCommentIds ?? [])
         .map((cid) => byId.get(String(cid)))
@@ -497,22 +502,62 @@ async function main() {
         .map((c) => ({ id: c.id, author: c.author, text: c.text, permalink: c.permalink, date: c.date, isOwner: c.isOwner }));
       if (!sourceComments.length) continue; // cited nothing real — drop it
 
+      const overlap = new Map(); // prior issue -> how many of these comments it holds
+      for (const c of sourceComments) {
+        const p = priorByComment.get(c.id);
+        if (p) overlap.set(p, (overlap.get(p) ?? 0) + 1);
+      }
+      let dominant = null, best = 0;
+      for (const [p, n] of overlap) if (n > best) (best = n), (dominant = p);
+
+      prepared.push({ issue, sourceComments, overlap, dominant, overlapCount: best });
+    }
+
+    // A prior's identity goes to the one candidate overlapping it most; ties keep the
+    // first. Other candidates that also touched it (a split) fall through to a fresh
+    // id below rather than duplicating the identity and its resolved flag.
+    const winnerFor = new Map(); // prior.id -> winning candidate's issue object
+    for (const p of prepared) {
+      if (!p.dominant) continue;
+      const cur = winnerFor.get(p.dominant.id);
+      if (!cur || p.overlapCount > cur.overlapCount) winnerFor.set(p.dominant.id, p);
+    }
+
+    for (const { issue, sourceComments, overlap, dominant } of prepared) {
       const dates = sourceComments.map((c) => c.date).filter(Boolean);
       const lastSeen = dates.length ? Math.max(...dates) : 0;
       const derivedFirst = dates.length ? Math.min(...dates) : 0;
 
-      const match = sourceComments.map((c) => priorByComment.get(c.id)).find(Boolean);
-      const { status, resolutionNote, resolvedDate } = reconcileStatus(issue, byId, match, sourceComments);
+      const match = dominant && winnerFor.get(dominant.id)?.issue === issue ? dominant : null;
+      let { status, resolutionNote, resolvedDate } = reconcileStatus(issue, byId, match, sourceComments);
+
+      // Merge (this candidate absorbed >1 prior): it keeps the dominant prior's id,
+      // but if ANY absorbed prior was still open, force open — a merge must never let
+      // a resolved neighbour hide an open problem, which the page filters out of view.
+      if (match && overlap.size > 1 && status !== "open" &&
+          [...overlap.keys()].some((p) => (p.status ?? "open") === "open")) {
+        (status = "open"), (resolutionNote = ""), (resolvedDate = 0);
+      }
+
+      // firstSeen spans every absorbed prior on a merge; a lone match keeps its own.
+      let firstSeen = derivedFirst;
+      if (match) {
+        const firsts = [...overlap.keys()].map((p) => p.firstSeen).filter(Boolean);
+        const ff = Math.min(...firsts, derivedFirst || Infinity);
+        firstSeen = isFinite(ff) ? ff : derivedFirst;
+      }
 
       issues.push({
         id: match?.id ?? randomUUID(),
         mod: mod.id,
         type: issue.type,
-        title: issue.title,
+        // Sticky: a matched issue keeps its prior title so the label doesn't drift as
+        // the model rephrases it run to run. summary/type stay fresh to track updates.
+        title: match?.title ?? issue.title,
         summary: issue.summary,
         sourceComments,
         reportCount: sourceComments.length,
-        firstSeen: match?.firstSeen ?? derivedFirst,
+        firstSeen,
         lastSeen,
         isNew: !match,
         status,
