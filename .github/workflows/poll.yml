@@ -1,11 +1,15 @@
 name: Poll workshop stats
 
 on:
+  # Real 5-minute cadence comes from an external scheduler (cron-job.org) that
+  # POSTs a `poll` repository_dispatch. GitHub's own `schedule:` cron is
+  # best-effort and skips the large majority of */5 runs under load, so it is
+  # kept below only as a sparse safety net: if the external scheduler is ever
+  # down, data still updates and the 6h heartbeat in fetch.mjs still fires.
+  repository_dispatch:
+    types: [poll]
   schedule:
-    # Five minutes is GitHub's documented floor for `schedule:`, and runs are
-    # queued best-effort on top of that, so treat this as "no faster than 5 min"
-    # rather than a promise.
-    - cron: "*/5 * * * *"
+    - cron: "17 * * * *" # hourly fallback, offset off the hour to dodge peak load
   workflow_dispatch: # lets you force a check from the Actions tab
 
 permissions:
