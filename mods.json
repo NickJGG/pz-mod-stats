@@ -9,6 +9,7 @@
     { "id": "3782379500", "short": "Tool Head Repair", "slot": 5 },
     { "id": "3782735637", "short": "Moveable Workstations", "slot": 6 },
     { "id": "3782920935", "short": "Inventory Selection Fix", "slot": 7 },
-    { "id": "3790452346", "short": "Rideable Elevators", "slot": 8 }
+    { "id": "3790452346", "short": "Rideable Elevators", "slot": 8 },
+    { "id": "3794099205", "short": "Generator Manager", "slot": 9 }
   ]
 }

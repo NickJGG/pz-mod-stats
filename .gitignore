@@ -2,3 +2,5 @@
 # Anything here is a local scratch copy from running scripts/fetch.mjs by hand;
 # committing it to master would be the exact churn the data branch exists to avoid.
 data/
+
+bash.exe.stackdump
